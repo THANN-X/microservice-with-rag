@@ -1,0 +1,56 @@
+# --- Git & Version Control (สำคัญมาก ไฟล์พวกนี้ใหญ่) ---
+.git
+.gitignore
+.dockerignore
+
+# --- IDE & System Files ---
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# --- Secrets & Environment (ห้ามหลุดเข้าไปใน Image เด็ดขาด!) ---
+.env
+.env.*
+*.pem
+*.key
+*.pub
+
+# --- Docker Compose ---
+# เราไม่ต้องการไฟล์ compose ในตัว image เพราะมันมีไว้ run ข้างนอก
+docker-compose.yml
+docker-compose.*.yml
+
+# ==========================
+# Frontend (Node/React/Next)
+# ==========================
+
+# สำคัญที่สุด! เราต้องไป npm install ใหม่ใน Docker 
+# เพราะ OS เครื่องเรากับ Docker ไม่เหมือนกัน (เช่น Mac vs Linux)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# ไฟล์ Build เก่าๆ ในเครื่องเรา ไม่ต้องเอาไป เราจะไป Build ใหม่ใน Docker
+.next/
+out/
+build/
+dist/
+coverage/
+
+# ==========================
+# Backend (Go)
+# ==========================
+
+# ไฟล์ Binary ที่ Build ในเครื่องเรา (Run ใน Linux ไม่ได้)
+*.exe
+*.test
+# หรือถ้า Binary ไม่มีนามสกุล ก็ให้ระบุชื่อโฟลเดอร์ output แทน เช่น
+# /bin/
+
+# Go Workspace (Local dev only)
+go.work
+go.work.sum
+
+# Vendor (ถ้าไม่ได้ใช้ mode vendor ก็ไม่ต้องเอาขึ้น ไป load ใหม่เอา)
+vendor/

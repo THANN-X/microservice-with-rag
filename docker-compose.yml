@@ -1,0 +1,103 @@
+services:
+  db:
+    image: postgres:17
+    container_name: main-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_DB_NAMES}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    ports: 
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+      # Application Services
+  auth-service-app:
+    build:
+      context: .
+      dockerfile: backend/services/auth_service/Dockerfile
+    container_name: auth-service-app
+    ports:
+      - "3001:3001"
+    depends_on:
+        db:
+          condition: service_healthy
+    environment:
+      - APP_PORT=3001
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=auth_db
+      - DB_USER=${APP_DB_USER}
+      - DB_PASSWORD=${APP_DB_PASSWORD}
+
+  product-service-app:
+    build:
+      context: .
+      dockerfile: backend/services/product_service/Dockerfile
+    container_name: product-service-app
+    ports:
+      - "3002:3002"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - APP_PORT=3002
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=product_db
+      - DB_USER=${APP_DB_USER}
+      - DB_PASSWORD=${APP_DB_PASSWORD}
+
+  order-service-app:
+    build: 
+      context: .
+      dockerfile: backend/services/order_service/Dockerfile
+    container_name: order-service-app
+    ports:
+      - "3003:3003"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - APP_PORT=3003
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=order_db
+      - DB_USER=${APP_DB_USER}
+      - DB_PASSWORD=${APP_DB_PASSWORD}
+
+  bff-service-app:
+    build: ./backend/bff
+    container_name: bff_service
+    ports: 
+      - "8080:8080"
+    environment:
+      - APP_PORT=8080
+        # Database connection details
+      - AUTH_SERVICE_URL=auth-service-app:3001
+    depends_on:
+      - auth-service-app
+
+volumes:
+  postgres_data:
+
