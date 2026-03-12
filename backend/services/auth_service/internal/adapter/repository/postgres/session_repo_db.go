@@ -10,16 +10,16 @@ import (
 	"gorm.io/gorm"
 )
 
-type sessionRepository struct {
+type sessionRepositoryDB struct {
 	db *gorm.DB
 }
 
 func NewSessionRepository(db *gorm.DB) port.SessionRepository {
-	return &sessionRepository{db: db}
+	return &sessionRepositoryDB{db: db}
 }
 
 // CreateSession บันทึก Session ใหม่ลง DB
-func (r *sessionRepository) CreateSession(ctx context.Context, session *domain.Session) error {
+func (r *sessionRepositoryDB) CreateSession(ctx context.Context, session *domain.Session) error {
 	sessionEntity := entity.FromDomainSession(session)
 
 	if err := r.db.WithContext(ctx).Create(sessionEntity); err != nil {
@@ -30,7 +30,7 @@ func (r *sessionRepository) CreateSession(ctx context.Context, session *domain.S
 
 	return nil
 }
-func (r *sessionRepository) GetByRefreshToken(ctx context.Context, refreshToken string) (*domain.Session, error) {
+func (r *sessionRepositoryDB) GetByRefreshToken(ctx context.Context, refreshToken string) (*domain.Session, error) {
 	sessionEntity := &entity.SessionEntity{}
 
 	// ค้นหา Token และต้องยังไม่ Revoked (Optionally check Revoked here or in Service)
@@ -46,6 +46,6 @@ func (r *sessionRepository) GetByRefreshToken(ctx context.Context, refreshToken 
 }
 
 // RevokeSession ยกเลิกการใช้งาน Token (เช่น user กด Logout)
-func (r *sessionRepository) RevokeSession(ctx context.Context, refreshToken string) error {
+func (r *sessionRepositoryDB) RevokeSession(ctx context.Context, refreshToken string) error {
 	return r.db.WithContext(ctx).Model(&entity.SessionEntity{}).Where("refresh_token = ?", refreshToken).Update("is_revoked", true).Error
 }

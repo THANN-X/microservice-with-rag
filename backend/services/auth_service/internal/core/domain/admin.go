@@ -15,3 +15,24 @@ type Admin struct {
 	Address   string
 	Role      string
 }
+
+func (a *Admin) SetPassword(rawPassword string) error {
+
+	err := a.Password.GeneratePassword(rawPassword)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *Admin) CheckPassword(rawPassword string) error {
+	err := a.Password.ComparePassword(rawPassword)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -17,111 +17,82 @@ import (
 )
 
 func main() {
-	// Load database configuration from environment variables
-	// Connect to the database
+	// Setup Database
 	cfg := config.LoadConfig()
 	dsn := cfg.GetDSN()
 	db := config.OpenDatabase(dsn)
-	// Open database connection
 
-	// --- Repositories ---
-	// Initialize repository, service, and handler
+	// Setup Repositories
 	userRepository := repository.NewUserRepositoryDB(db)
+	adminRepository := repository.NewAdminRepository(db)
 	sessionRepository := repository.NewSessionRepository(db)
 
-	// --- Shared Kernel (JWT) ---
-	// *สำคัญ* ควรดึง Secret จาก Config/Env ไม่ควร Hardcode
+	// JWT Setup
 	_ = godotenv.Load()
 	value, _ := os.LookupEnv("JWT_SECRET")
 	if value == "" {
 		value = "my-secret-key-change-me" // Fallback (Dev only)
 	}
 
+	adminSecretGuard := func(c *fiber.Ctx) error {
+		expectedSecret := os.Getenv("ADMIN_SECRET_KEY")
+		if expectedSecret == "" {
+			expectedSecret = "super-secret-admin-key" // Fallback (Dev only)
+		}
+
+		clientSecret := c.Get("X-Admin-Secret")
+		if clientSecret != expectedSecret {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Unauthorized: Invalid admin secret key",
+			})
+		}
+		return c.Next()
+	}
+
 	fmt.Println(value)
 
 	jwtService := jwtutils.NewJWTService(value, "ecommerce_app")
 
-	// --- Services ---
+	// Setup Services
 	userService := service.NewUserService(userRepository)
-	authservice := service.NewAuthService(userRepository, sessionRepository, jwtService)
+	adminService := service.NewAdminService(adminRepository)
+	authservice := service.NewAuthService(userRepository, adminRepository, sessionRepository, jwtService)
 
-	// --- Handlers ---
+	// Setup Handlers
 	userHandler := http.NewUserHandler(userService)
-	authHandler := http.NewAuthHandler(userService, authservice)
+	adminHandler := http.NewAdminHandler(adminService)
+	authHandler := http.NewAuthHandler(userService, adminService, authservice)
 
-	// ctx := context.Background()
-
-	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// defer cancel() // สำคัญ: ต้อง cancel เสมอเมื่อจบการทำงาน
-
-	// newUser := &domain.User{
-	// 	FirstName: "Thann",
-	// 	LastName:  "Khom",
-	// 	Email:     "thann2@example.com",
-	// 	Password:  "securepassword",
-	// 	Phone:     "123-456-7890",
-	// 	Address:   "123 Main St, City, Country",
-	// 	Role:      "",
-	// }
-	// users, err := userRepository.AllUsers(ctx)
-
-	//users, err := userRepository.FindByEmail(ctx, "thann@example.com")
-
-	// user, err := userRepository.FindById(ctx, 1)
-
-	// update := map[string]interface{}{
-	// 	"first_name": "UpdatedName",
-	// 	"last_name":  "UpdatedLastName",
-	// 	"role":       "admin",
-	// }
-
-	// err = userRepository.Save(ctx, newUser)
-	// err = userRepository.Update(ctx, 1, update)
-	// err = userRepository.Delete(ctx, 2)
-
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// for _, u := range users {
-	// 	fmt.Printf("User: %+v\n", u.FirstName)
-	// }
-	//fmt.Println("User saved successfully:", user)
-	// fmt.Println("Updated user:", user)
-	// fmt.Println("User deleted successfully")
-
-	// Initialize Fiber app and routes
-	// สร้าง Middleware Instance
+	// Middleware Instance
 	authMiddleware := authmiddleware.AuthMiddleware(jwtService)
 
+	// Setup HTTP Handler & Routes
 	app := fiber.New()
 
-	// ===========================
-	// 🟢 Public Routes (ไม่ต้อง Login)
-	// ===========================
-	authGroup := app.Group("/auth")
-	authGroup.Post("/login", authHandler.Login)
-	authGroup.Post("/refresh-token", authHandler.RefreshToken)
-
-	// Register ปกติไม่ต้อง Login ก็สมัครได้
+	// Public Routes
 	app.Post("/users/register", userHandler.RegisterUser)
 
-	// ===========================
-	// 🔒 Private Routes (ต้อง Login)
-	// ===========================
-	// สร้าง Group ใหม่สำหรับ route ที่ต้องป้องกัน
-	protected := app.Group("/users")
+	// Protected Route ด้วย Secret Key
+	app.Post("/admin/register", adminSecretGuard, adminHandler.CreateAdmin)
 
-	// *** พระเอกอยู่ตรงนี้: สั่งให้ Group นี้ใช้ Middleware ***
-	protected.Use(authMiddleware)
+	// Auth Routes
+	authGroup := app.Group("/auth")
+	authGroup.Post("/user-login", authHandler.LoginUser)
+	authGroup.Post("/admin-login", authHandler.LoginAdmin)
+	authGroup.Post("/logout", authHandler.Logout)
+	authGroup.Post("/refresh-token", authHandler.RefreshToken)
 
-	// Route พวกนี้จะถูกดักด้วย Middleware ก่อนเสมอ
+	// Protected Routes
+	// กลุ่มนี้จะถูกดักด้วย Middleware ก่อนเสมอ
+	protected := app.Group("/users", authMiddleware)
+
+	// User Profile Routes
 	protected.Post("/update/:id", userHandler.UpdateUserProfile)
 	protected.Post("/chgpass/:id", userHandler.ChangePassword)
-	// ✅ วาง /me ไว้ก่อนเสมอ
+	// ต้องประกาศเส้นทางนี้ก่อน เพื่อป้องกันการชนกับ dynamic param
 	protected.Get("/me", userHandler.GetMyProfile)
-	// ⬇️ แล้วค่อยตามด้วย dynamic param
-	protected.Get("/:id", userHandler.GetUserProfile) // ดึง Profile ตัวเอง
+	// ดึงข้อมูลโปรไฟล์ของตัวเอง
+	protected.Get("/:id", userHandler.GetUserProfile)
 
 	logs.Info("Auth service started at port 3001")
 

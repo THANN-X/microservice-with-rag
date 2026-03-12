@@ -31,9 +31,9 @@ func Loadconfig() *Config {
 
 	config := &Config{
 		DBHost:     getEnv("DB_HOST_PRODUCT", "localhost"),
-		DBPort:     getEnv("DB_POR_PRODUCT", "5432"),
+		DBPort:     getEnv("DB_PORT_PRODUCT", "5432"),
 		DBUser:     getEnv("DB_USER_PRODUCT", "myuser"),
-		DBPassword: getEnv("DB_PASSWORD_PRODUCT", "password"),
+		DBPassword: getEnv("DB_PASSWORD_PRODUCT", "mypassword"),
 		DBName:     getEnv("DB_NAME_PRODUCT", "product_db"),
 	}
 
@@ -47,6 +47,7 @@ func (c *Config) GetDSN() string {
 }
 
 func OpenDatabase(dsn string) *gorm.DB {
+	print(dsn)
 	db, err := database.ConnectPostgres(dsn)
 	if err != nil {
 		panic("failed to connect to database")
@@ -55,7 +56,7 @@ func OpenDatabase(dsn string) *gorm.DB {
 	print(db)
 	fmt.Println("Database connected!")
 
-	err = db.AutoMigrate(&entity.ProductEntity{}, &entity.ProductVariantEntity{}, &entity.AttributeEntity{}, &entity.AttributeValueEntity{}, &entity.InboxEventEntity{})
+	err = db.AutoMigrate(&entity.ProductEntity{}, &entity.ProductVariantEntity{}, &entity.AttributeEntity{}, &entity.AttributeValueEntity{}, &entity.InboxEventEntity{}, &entity.OutboxEventEntity{}, &entity.CategoryEntity{})
 
 	if err != nil {
 		panic("failed to migrate database")

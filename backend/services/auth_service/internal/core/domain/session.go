@@ -7,8 +7,10 @@ type Session struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	DeletedAt    *time.Time
-	UserID       uint
+	UserID       *uint
 	User         *User
+	AdminID      *uint
+	Admin        *Admin
 	RefreshToken string
 	DeviceInfo   string
 	IPAddress    string

@@ -6,37 +6,59 @@ import (
 	"gorm.io/gorm"
 )
 
-type CateGoryEntity struct {
+type CategoryEntity struct {
 	gorm.Model
 	Name        string `gorm:"column:name"`
 	Slug        string `gorm:"unique;column:slug"`
 	ParentID    *uint  `gorm:"column:parent_id"`
 	Description string
-	IsActive    bool             `gorm:"default:true"`
-	Children    []CateGoryEntity `gorm:"foreignKey:ParentID"`
+	IsActive    bool `gorm:"default:true"`
+	// Self-referencing association
+	Children []CategoryEntity `gorm:"foreignKey:ParentID"`
 }
 
-func ToCateGoryEntity(d *domain.CateGory) *CateGoryEntity {
-	return &CateGoryEntity{
+func (CategoryEntity) TableName() string {
+	return "category_entities"
+}
+
+func ToCategoryEntity(d *domain.Category) *CategoryEntity {
+	if d == nil {
+		return nil
+	}
+
+	return &CategoryEntity{
 		Model: gorm.Model{
 			ID:        d.ID,
 			CreatedAt: d.CreatedAt,
 			UpdatedAt: d.UpdatedAt,
 		},
+		Name:        d.Name,
 		Slug:        d.Slug,
+		ParentID:    d.ParentID,
 		Description: d.Description,
 		IsActive:    d.IsActive,
 	}
 }
 
-func (e *CateGoryEntity) ToCateGoryDomain() *domain.CateGory {
-	return &domain.CateGory{
+func (e *CategoryEntity) ToCategoryDomain() *domain.Category {
+	if e == nil {
+		return nil
+	}
+
+	d := &domain.Category{
 		ID:          e.ID,
 		CreatedAt:   e.CreatedAt,
 		UpdatedAt:   e.UpdatedAt,
 		Name:        e.Name,
 		Slug:        e.Slug,
+		ParentID:    e.ParentID,
 		Description: e.Description,
 		IsActive:    e.IsActive,
 	}
+
+	for _, child := range e.Children {
+		d.Children = append(d.Children, *child.ToCategoryDomain())
+	}
+
+	return d
 }

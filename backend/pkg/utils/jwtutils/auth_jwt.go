@@ -13,6 +13,7 @@ const (
 	RefreshToken TokenType = "refresh"
 )
 
+// JwtCustomClaims โครงสร้างของ Claims ที่เราจะเก็บใน JWT
 type JwtCustomClaims struct {
 	UserID uint      `json:"user_id"`
 	Role   string    `json:"role"`
@@ -20,6 +21,7 @@ type JwtCustomClaims struct {
 	jwt.RegisteredClaims
 }
 
+// JWTService จัดการการสร้างและตรวจสอบ JWT Tokens
 type JWTService struct {
 	SecretKey     string
 	Issuer        string
@@ -36,6 +38,7 @@ func NewJWTService(secret string, issuer string) *JWTService {
 	}
 }
 
+// GenerateToken สร้าง JWT Token พร้อม Claims
 func (j *JWTService) GenerateToken(userID uint, role string, tokenType TokenType) (string, error) {
 	expiry := j.AccessExpiry
 	if tokenType == RefreshToken {
@@ -56,6 +59,7 @@ func (j *JWTService) GenerateToken(userID uint, role string, tokenType TokenType
 	return token.SignedString([]byte(j.SecretKey))
 }
 
+// ValidateToken ตรวจสอบความถูกต้องของ Token และคืนค่า Claims
 func (j *JWTService) ValidateToken(tokenString string) (*JwtCustomClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &JwtCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(j.SecretKey), nil

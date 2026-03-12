@@ -21,7 +21,7 @@ type User struct {
 
 func (u *User) SetPassword(rawPassword string) error {
 
-	err := u.Password.Set(rawPassword)
+	err := u.Password.GeneratePassword(rawPassword)
 
 	if err != nil {
 		return err
@@ -32,7 +32,7 @@ func (u *User) SetPassword(rawPassword string) error {
 
 func (u *User) CheckPassword(rawPassword string) error {
 
-	err := u.Password.Check(rawPassword)
+	err := u.Password.ComparePassword(rawPassword)
 
 	if err != nil {
 		return err
@@ -43,13 +43,13 @@ func (u *User) CheckPassword(rawPassword string) error {
 
 func (u *User) ChangePassword(oldPassword, newPassword string) error {
 
-	err := u.Password.Check(oldPassword)
+	err := u.Password.ComparePassword(oldPassword)
 
 	if err != nil {
 		return err
 	}
 
-	err = u.Password.Set(newPassword)
+	err = u.Password.GeneratePassword(newPassword)
 
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func (u *User) ChangePassword(oldPassword, newPassword string) error {
 	return nil
 }
 
-func (u *User) UpdateUserProfile(req *User) (*User, error) {
+func (u *User) UpdateUserProfile(req *User) *User {
 	if req.FirstName != "" {
 		u.FirstName = req.FirstName
 	}
@@ -75,5 +75,5 @@ func (u *User) UpdateUserProfile(req *User) (*User, error) {
 		u.Phone = req.Phone
 	}
 
-	return u, nil
+	return u
 }

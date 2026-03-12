@@ -1,0 +1,1258 @@
+basePath: /
+definitions:
+  product_service_internal_core_port_service_dto.AddVariantReq:
+    properties:
+      attribute_value_ids:
+        items:
+          type: integer
+        minItems: 1
+        type: array
+      name:
+        description: e.g. "Red / XL"
+        type: string
+      price:
+        type: number
+      product_id:
+        type: integer
+      sku:
+        type: string
+      stock:
+        type: integer
+    required:
+    - attribute_value_ids
+    - name
+    - product_id
+    - sku
+    type: object
+  product_service_internal_core_port_service_dto.AdjustStockReq:
+    properties:
+      new_stock:
+        type: integer
+      product_id:
+        type: integer
+      reason:
+        description: e.g. "Damage", "Found"
+        maxLength: 255
+        minLength: 1
+        type: string
+      variant_id:
+        type: integer
+    required:
+    - product_id
+    - reason
+    - variant_id
+    type: object
+  product_service_internal_core_port_service_dto.AttributeRes:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      values:
+        items:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.AttributeValueRes'
+        type: array
+    type: object
+  product_service_internal_core_port_service_dto.AttributeValueRes:
+    properties:
+      id:
+        type: integer
+      value:
+        type: string
+    type: object
+  product_service_internal_core_port_service_dto.CategoryRes:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.CategoryRes'
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      name:
+        type: string
+      parent_id:
+        type: integer
+      slug:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  product_service_internal_core_port_service_dto.CreateAttributeReq:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - name
+    type: object
+  product_service_internal_core_port_service_dto.CreateAttributeValueReq:
+    properties:
+      attribute_id:
+        type: integer
+      value:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - attribute_id
+    - value
+    type: object
+  product_service_internal_core_port_service_dto.CreateCategoryReq:
+    properties:
+      description:
+        maxLength: 255
+        type: string
+      is_active:
+        type: boolean
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+      parent_id:
+        type: integer
+      slug:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - name
+    - slug
+    type: object
+  product_service_internal_core_port_service_dto.CreateProductReq:
+    properties:
+      category_ids:
+        description: e.g. [1, 5, 10] (1=Electronics, 5=Gadgets, 10=Accessories)
+        items:
+          type: integer
+        minItems: 1
+        type: array
+      description:
+        maxLength: 255
+        minLength: 1
+        type: string
+      image_urls:
+        items:
+          type: string
+        minItems: 1
+        type: array
+      name:
+        type: string
+      variants:
+        items:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.CreateVariantReq'
+        type: array
+    required:
+    - category_ids
+    - description
+    - image_urls
+    - name
+    type: object
+  product_service_internal_core_port_service_dto.CreateVariantReq:
+    properties:
+      attribute_value_ids:
+        description: e.g. [101, 205] (101=Red, 205=XL)
+        items:
+          type: integer
+        minItems: 1
+        type: array
+      name:
+        type: string
+      price:
+        type: number
+      sku:
+        type: string
+      stock:
+        type: integer
+    required:
+    - attribute_value_ids
+    - name
+    - sku
+    type: object
+  product_service_internal_core_port_service_dto.ProductListRes:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.ProductRes'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  product_service_internal_core_port_service_dto.ProductRes:
+    properties:
+      categories:
+        items:
+          type: string
+        type: array
+      created_by:
+        type: integer
+      description:
+        type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      name:
+        type: string
+      variants:
+        items:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.ProductVariantRes'
+        type: array
+    type: object
+  product_service_internal_core_port_service_dto.ProductVariantRes:
+    properties:
+      is_active:
+        type: boolean
+      options:
+        description: ส่งเป็น Object Array เพื่อความยืดหยุ่น
+        items:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.VariantOptionRes'
+        type: array
+      price:
+        type: number
+      sku:
+        type: string
+      stock:
+        type: integer
+      variant_id:
+        type: integer
+    type: object
+  product_service_internal_core_port_service_dto.SetCategoryActiveReq:
+    properties:
+      category_id:
+        description: ถูก populate จาก URL param โดย Handler
+        type: integer
+      is_active:
+        type: boolean
+    type: object
+  product_service_internal_core_port_service_dto.SetProductActiveReq:
+    properties:
+      is_active:
+        type: boolean
+      product_id:
+        description: ถูก populate จาก URL param โดย Handler
+        type: integer
+    type: object
+  product_service_internal_core_port_service_dto.SetVariantActiveReq:
+    properties:
+      is_active:
+        type: boolean
+      product_id:
+        description: ถูก populate จาก URL param โดย Handler
+        type: integer
+      variant_id:
+        description: ถูก populate จาก URL param โดย Handler
+        type: integer
+    type: object
+  product_service_internal_core_port_service_dto.UpdateAttributeReq:
+    properties:
+      attribute_id:
+        type: integer
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - attribute_id
+    - name
+    type: object
+  product_service_internal_core_port_service_dto.UpdateCategoryReq:
+    properties:
+      category_id:
+        type: integer
+      description:
+        maxLength: 255
+        type: string
+      is_active:
+        type: boolean
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+      parent_id:
+        type: integer
+      slug:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - category_id
+    - name
+    - slug
+    type: object
+  product_service_internal_core_port_service_dto.UpdateProductGeneralInfoReq:
+    properties:
+      category_ids:
+        items:
+          type: integer
+        minItems: 1
+        type: array
+      description:
+        maxLength: 255
+        minLength: 1
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      product_id:
+        type: integer
+    required:
+    - category_ids
+    - description
+    - name
+    - product_id
+    type: object
+  product_service_internal_core_port_service_dto.UpdateVariantPriceReq:
+    properties:
+      new_price:
+        type: number
+      product_id:
+        description: ต้องมีเพื่อ Load Aggregate Root
+        type: integer
+      variant_id:
+        type: integer
+    required:
+    - product_id
+    - variant_id
+    type: object
+  product_service_internal_core_port_service_dto.VariantOptionRes:
+    properties:
+      name:
+        description: '"Color"'
+        type: string
+      value:
+        description: '"Red"'
+        type: string
+    type: object
+host: localhost:3002
+info:
+  contact:
+    email: your.email@example.com
+    name: API Support
+  description: This is the Product Service API using Hexagonal Architecture & CQRS.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Product Service API
+  version: "1.0"
+paths:
+  /attributes:
+    get:
+      description: Returns all attributes (e.g. Color, Size) each populated with their
+        possible values.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Attribute list
+          schema:
+            items:
+              $ref: '#/definitions/product_service_internal_core_port_service_dto.AttributeRes'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List all attributes with their values
+      tags:
+      - Attributes (Query)
+  /attributes/{id}:
+    get:
+      description: Returns a single attribute with all its values.
+      parameters:
+      - description: Attribute ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Attribute detail
+          schema:
+            $ref: '#/definitions/product_service_internal_core_port_service_dto.AttributeRes'
+        "404":
+          description: Attribute not found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get attribute by ID
+      tags:
+      - Attributes (Query)
+  /attributes/admin:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new attribute type such as Color or Size.
+      parameters:
+      - description: Attribute data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.CreateAttributeReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Attribute created successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new attribute (Admin)
+      tags:
+      - Attributes (Command)
+  /attributes/admin/{id}:
+    delete:
+      description: Deletes an attribute and cascades to its values.
+      parameters:
+      - description: Attribute ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Attribute deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Attribute not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete an attribute (Admin)
+      tags:
+      - Attributes (Command)
+    put:
+      consumes:
+      - application/json
+      description: Updates the name of an existing attribute.
+      parameters:
+      - description: Attribute ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated attribute data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.UpdateAttributeReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Attribute updated successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Attribute not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update an attribute (Admin)
+      tags:
+      - Attributes (Command)
+  /attributes/admin/{id}/values:
+    post:
+      consumes:
+      - application/json
+      description: Adds a new possible value (e.g. "Red") to an existing attribute
+        (e.g. "Color").
+      parameters:
+      - description: Attribute ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Attribute value data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.CreateAttributeValueReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Attribute value created successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Attribute not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add a value to an attribute (Admin)
+      tags:
+      - Attributes (Command)
+  /attributes/admin/{id}/values/{valueId}:
+    delete:
+      description: Removes a specific value from an attribute.
+      parameters:
+      - description: Attribute ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Attribute Value ID
+        in: path
+        name: valueId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Attribute value deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete an attribute value (Admin)
+      tags:
+      - Attributes (Command)
+  /categories:
+    get:
+      description: Returns all root categories with their children (tree structure).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Category tree
+          schema:
+            items:
+              $ref: '#/definitions/product_service_internal_core_port_service_dto.CategoryRes'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List all categories
+      tags:
+      - Categories (Query)
+  /categories/{id}:
+    get:
+      description: Returns a single category with its children.
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Category detail
+          schema:
+            $ref: '#/definitions/product_service_internal_core_port_service_dto.CategoryRes'
+        "404":
+          description: Category not found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get category by ID
+      tags:
+      - Categories (Query)
+  /categories/admin:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new product category. Supports nested categories via
+        parent_id.
+      parameters:
+      - description: Category data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.CreateCategoryReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Category created successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new category (Admin)
+      tags:
+      - Categories (Command)
+  /categories/admin/{id}:
+    delete:
+      description: Soft-deletes a category by ID.
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Category deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Category not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a category (Admin)
+      tags:
+      - Categories (Command)
+    put:
+      consumes:
+      - application/json
+      description: Updates name, slug, description, is_active, and parent_id of a
+        category.
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated category data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.UpdateCategoryReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Category updated successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Category not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a category (Admin)
+      tags:
+      - Categories (Command)
+  /categories/admin/{id}/active:
+    patch:
+      consumes:
+      - application/json
+      description: Toggle category visibility. is_active=false hides it from the storefront.
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Active status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.SetCategoryActiveReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Activate or deactivate a category (Admin)
+      tags:
+      - Categories (Command)
+  /products:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of products with pagination, filtering by category,
+        and searching.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search by product name or SKU
+        in: query
+        name: search
+        type: string
+      - description: Filter by Category ID
+        in: query
+        name: category
+        type: integer
+      - description: Filter by active status (true/false)
+        in: query
+        name: is_active
+        type: boolean
+      - default: created_at
+        description: Sort field (e.g., created_at, name, price)
+        in: query
+        name: sort_by
+        type: string
+      - default: desc
+        description: Sort order (asc or desc)
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved product list
+          schema:
+            $ref: '#/definitions/product_service_internal_core_port_service_dto.ProductListRes'
+        "400":
+          description: Invalid query parameters
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List all products (Admin & Public)
+      tags:
+      - Products (Query)
+  /products/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve detailed information of a specific product including variants
+        and categories.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Product details
+          schema:
+            $ref: '#/definitions/product_service_internal_core_port_service_dto.ProductRes'
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Product not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get product by ID
+      tags:
+      - Products (Query)
+  /products/admin:
+    post:
+      consumes:
+      - application/json
+      description: Create a new product with its variants and categories. Emits Outbox
+        event.
+      parameters:
+      - description: Product Creation Data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.CreateProductReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Product created successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error or invalid JSON
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new product (Admin)
+      tags:
+      - Products (Command)
+  /products/admin/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Soft-delete a product by ID. Emits PRODUCT_DELETED outbox event.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Product deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid product ID
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Product not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a product (Admin)
+      tags:
+      - Products (Command)
+  /products/admin/{id}/active:
+    patch:
+      consumes:
+      - application/json
+      description: Toggle product visibility. is_active=false hides the product from
+        the storefront.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Active status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.SetProductActiveReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Activate or deactivate a product (Admin)
+      tags:
+      - Products (Command)
+  /products/admin/{id}/general-info:
+    put:
+      consumes:
+      - application/json
+      description: Update a product's name, description, and category associations.
+        Emits PRODUCT_INFO_UPDATED outbox event.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated product data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.UpdateProductGeneralInfoReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Product general info updated successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error or invalid ID
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Product not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update product general info (Admin)
+      tags:
+      - Products (Command)
+  /products/admin/{id}/variants:
+    post:
+      consumes:
+      - application/json
+      description: Adds a new color/size (variant) to an existing product and emits
+        an outbox event.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Variant Data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.AddVariantReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Variant added successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Product not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add a new variant to an existing product
+      tags:
+      - Variants (Command)
+  /products/admin/{id}/variants/{variantId}/active:
+    patch:
+      consumes:
+      - application/json
+      description: Toggle variant visibility without affecting the parent product.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Variant ID
+        in: path
+        name: variantId
+        required: true
+        type: integer
+      - description: Active status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.SetVariantActiveReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Activate or deactivate a product variant (Admin)
+      tags:
+      - Products (Command)
+  /products/admin/{id}/variants/{variantId}/price:
+    patch:
+      consumes:
+      - application/json
+      description: Update the price of a specific product variant. Emits PRODUCT_PRICE_CHANGED
+        outbox event.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Variant ID
+        in: path
+        name: variantId
+        required: true
+        type: integer
+      - description: New price data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.UpdateVariantPriceReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Product variant price updated successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error or invalid ID
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Product or variant not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update variant price (Admin)
+      tags:
+      - Variants (Command)
+  /products/admin/{id}/variants/{variantId}/stock:
+    patch:
+      consumes:
+      - application/json
+      description: Manually set the absolute stock value for a variant (stock take
+        / damage write-off). Emits STOCK_ADJUSTED outbox event.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Variant ID
+        in: path
+        name: variantId
+        required: true
+        type: integer
+      - description: Stock adjustment data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product_service_internal_core_port_service_dto.AdjustStockReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Stock adjusted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error or invalid ID
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Product not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Adjust variant stock (Admin)
+      tags:
+      - Variants (Command)
+securityDefinitions:
+  BearerAuth:
+    description: 'Type "Bearer " followed by your token. Example: "Bearer eyJhbGci..."'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

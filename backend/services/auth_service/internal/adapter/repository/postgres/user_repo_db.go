@@ -21,9 +21,9 @@ func NewUserRepositoryDB(db *gorm.DB) port.UserRepository {
 	return &userRepositoryDB{db: db}
 }
 
-// 3. Method Implementations:
-// Each method implements the UserRepository interface
-// and contains the data access logic for user operations
+/* Method Implementations:
+Each method implements the UserRepository interface
+and contains the data access logic for user operations*/
 
 // Create adds a new user to the database
 func (r *userRepositoryDB) CreateUser(ctx context.Context, user *domain.User) error {
@@ -88,7 +88,7 @@ func (r *userRepositoryDB) FindByID(ctx context.Context, id uint) (*domain.User,
 	// Handle errors
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, domain.ErrUserNotFound
 		}
 		return nil, result.Error
 	}

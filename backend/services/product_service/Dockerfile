@@ -12,7 +12,6 @@ RUN go mod download
 
 RUN go build -o main ./cmd
 
-
 FROM alpine:latest
 WORKDIR /root/
 COPY --from=builder /app/services/product_service/main .

@@ -2,7 +2,7 @@ package errs
 
 import "net/http"
 
-// AppError struct ที่เก็บ Code และ Message
+// AppError struct to represent application-specific errors
 type AppError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -13,7 +13,7 @@ func (e AppError) Error() string {
 	return e.Message
 }
 
-// Helper function เพื่อสร้าง AppError
+// Constructor for AppError
 func NewAppError(code int, message string) error {
 	return AppError{
 		Code:    code,
@@ -21,8 +21,7 @@ func NewAppError(code int, message string) error {
 	}
 }
 
-// --- Domain/Business Errors (ตั้งชื่อตาม Business Case) ---
-
+// --- Generic Errors ---
 func NewNotFoundError(msg string) error {
 	return NewAppError(http.StatusNotFound, msg)
 }
@@ -35,10 +34,27 @@ func NewValidationError(msg string) error {
 	return NewAppError(http.StatusBadRequest, msg)
 }
 
-func NewConflictError(msg string) error { // เช่น อีเมลซ้ำ
+func NewConflictError(msg string) error {
 	return NewAppError(http.StatusConflict, msg)
 }
 
-func NewUnauthorizedError(msg string) error { // เช่น รหัสผ่านผิด
+func NewUnauthorizedError(msg string) error {
 	return NewAppError(http.StatusUnauthorized, msg)
+}
+
+// --- Product Specific Errors ---
+// Insufficient stock error
+func NewInsufficientStockError(msg string) error {
+	//
+	return NewAppError(http.StatusUnprocessableEntity, msg)
+}
+
+// Product inactive error
+func NewProductInactiveError(msg string) error {
+	return NewAppError(http.StatusGone, msg) // 410 Gone
+}
+
+// Order cannot be modified error
+func NewForbiddenError(msg string) error {
+	return NewAppError(http.StatusForbidden, msg)
 }

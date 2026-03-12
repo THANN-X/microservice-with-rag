@@ -21,7 +21,12 @@ type UserEntity struct {
 
 // ToDomain maps UserEntity to domain.User
 func (u *UserEntity) ToUserDomain() *domain.User {
+	if u == nil {
+		return nil
+	}
+
 	deletedAt := gormhelper.GormDeletedAtToTime(&u.DeletedAt)
+
 	return &domain.User{
 		ID:        u.ID,
 		CreatedAt: u.CreatedAt,
@@ -39,6 +44,10 @@ func (u *UserEntity) ToUserDomain() *domain.User {
 
 // FromDomain maps domain.User to UserEntity
 func ToUserEntity(user *domain.User) *UserEntity {
+	if user == nil {
+		return nil
+	}
+
 	gormDeletedAt := gormhelper.TimeToGormDeletedAt(user.DeletedAt)
 	return &UserEntity{
 		Model: gorm.Model{

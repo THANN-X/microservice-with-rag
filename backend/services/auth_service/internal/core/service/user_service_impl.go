@@ -4,32 +4,24 @@ import (
 	"auth_service/internal/core/domain"
 	repo "auth_service/internal/core/port/repo"
 	service "auth_service/internal/core/port/service"
-	req "auth_service/internal/core/port/service/dto"
-	res "auth_service/internal/core/port/service/dto"
+	dto "auth_service/internal/core/port/service/dto"
 	"context"
 	"errors"
 	"errs"
 	"logs"
 )
 
-// 1. Struct Declaration: Holds the repository instance
 type userService struct {
 	userRepo repo.UserRepository
 }
 
-// Constructor: Creates a new instance of userService
-func NewUserService(repo repo.UserRepository) service.UserService {
-	return &userService{userRepo: repo}
+func NewUserService(userRepo repo.UserRepository) service.UserService {
+	return &userService{userRepo: userRepo}
 }
 
-// 3. Method Implementations:
-// Each method implements the UserService interface
-// and contains the business logic for user operations
-
 // Register registers a new user
-func (s *userService) RegisterNewUser(ctx context.Context, newUserReq *req.CreateUserRequest, newUserPassReq string) (*res.UserResponse, error) {
+func (s *userService) RegisterNewUser(ctx context.Context, newUserReq *dto.CreateUserRequest, newUserPassReq string) (*dto.UserResponse, error) {
 	// Implementation of user registration logic
-
 	newUserDomain := &domain.User{
 		FirstName: newUserReq.FirstName,
 		LastName:  newUserReq.LastName,
@@ -47,14 +39,17 @@ func (s *userService) RegisterNewUser(ctx context.Context, newUserReq *req.Creat
 	_, err := s.userRepo.FindByEmail(ctx, newUserDomain.Email)
 
 	if err != nil {
-		// 1. ถ้ามี Error และ "ไม่ใช่" Not Found -> คือ DB พัง
+		// ถ้ามี Error และ ไม่ใช่ Not Found คือ DB พัง
 		if !errors.Is(err, domain.ErrUserNotFound) {
 			logs.Error(err)
 			return nil, errs.NewUnexpectedError()
 		}
+
 		// ถ้าเป็น Not Found ก็ปล่อยผ่านไป (เพราะเราต้องการให้ Not Found)
+
 	} else {
-		// 2. ถ้า err == nil (หาเจอ) -> คือ ซ้ำ
+
+		// ถ้า err == nil (หาเจอ) -> คือ ซ้ำ
 		logs.Error(err)
 		return nil, errs.NewConflictError("email already exists")
 	}
@@ -65,11 +60,11 @@ func (s *userService) RegisterNewUser(ctx context.Context, newUserReq *req.Creat
 		return nil, errs.NewUnexpectedError()
 	}
 
-	return res.ToUserResponse(newUserDomain), nil
+	return dto.ToUserResponse(newUserDomain), nil
 }
 
 // UpdateUserProfile updates the user's profile information
-func (s *userService) UpdateUserInfo(ctx context.Context, userID uint, userUpdateReq *req.UpdateUserRequest) (*domain.User, error) {
+func (s *userService) UpdateUserInfo(ctx context.Context, userID uint, userUpdateReq *dto.UpdateUserRequest) (*domain.User, error) {
 	// Implementation of user profile update logic
 
 	userDomain := &domain.User{
@@ -80,6 +75,7 @@ func (s *userService) UpdateUserInfo(ctx context.Context, userID uint, userUpdat
 	}
 
 	existingUser, err := s.userRepo.FindByID(ctx, userID)
+
 	if err != nil {
 		logs.Error(err)
 		return nil, errs.NewUnexpectedError()
@@ -90,15 +86,15 @@ func (s *userService) UpdateUserInfo(ctx context.Context, userID uint, userUpdat
 	}
 
 	// Update user fields
-	updatedUser, err := existingUser.UpdateUserProfile(userDomain)
+	updatedUser := existingUser.UpdateUserProfile(userDomain)
 
-	if err != nil {
-		logs.Error(err)
-		return nil, errs.NewValidationError("invalid user data update")
-	}
+	/* if err != nil {
+	// 	logs.Error(err)
+	// 	return nil, errs.NewValidationError("invalid user data update")
+	// }*/
 
 	// Save updated user to repository
-	if err := s.userRepo.UpdateUser(ctx, updatedUser); err != nil {
+	if err = s.userRepo.UpdateUser(ctx, updatedUser); err != nil {
 		logs.Error(err)
 		return nil, errs.NewUnexpectedError()
 	}
@@ -110,6 +106,7 @@ func (s *userService) UpdateUserInfo(ctx context.Context, userID uint, userUpdat
 func (s *userService) UpdatePassword(ctx context.Context, userID uint, oldPassword, newPassword string) error {
 	// Implementation of change password logic
 	user, err := s.userRepo.FindByID(ctx, userID)
+
 	if err != nil {
 		logs.Error(err)
 		return errs.NewUnexpectedError()
@@ -128,7 +125,7 @@ func (s *userService) UpdatePassword(ctx context.Context, userID uint, oldPasswo
 	}
 
 	// Save updated password to repository
-	if err := s.userRepo.UpdateUser(ctx, user); err != nil {
+	if err = s.userRepo.UpdateUser(ctx, user); err != nil {
 		logs.Error(err)
 		return errs.NewUnexpectedError()
 	}
@@ -137,9 +134,10 @@ func (s *userService) UpdatePassword(ctx context.Context, userID uint, oldPasswo
 }
 
 // GetUserProfile retrieves the user's profile information
-func (s *userService) GetUserProfile(ctx context.Context, id uint) (*res.UserResponse, error) {
+func (s *userService) GetUserProfile(ctx context.Context, id uint) (*dto.UserResponse, error) {
 	// Implementation of get user profile logic
 	user, err := s.userRepo.FindByID(ctx, id)
+
 	if err != nil {
 		logs.Error(err)
 		return nil, errs.NewUnexpectedError()
@@ -148,5 +146,6 @@ func (s *userService) GetUserProfile(ctx context.Context, id uint) (*res.UserRes
 	if user == nil {
 		return nil, errs.NewNotFoundError("user not found")
 	}
-	return res.ToUserResponse(user), nil
+
+	return dto.ToUserResponse(user), nil
 }

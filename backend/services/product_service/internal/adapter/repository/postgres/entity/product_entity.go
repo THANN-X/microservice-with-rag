@@ -4,15 +4,27 @@ import (
 	gormhelper "gorm_helper"
 	"product_service/internal/core/domain"
 
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
+// ProductEntity คือ GORM model ที่แมปสามารถเชื่อมต่อกับตาราง products ใน DB
+// WHY แยก Entity ออกจาก Domain?
+//   - Domain Object ไม่ควรรู้จัก GORM tag หรือโครงสร้าง DB (Clean Architecture)
+//   - ถ้าไม่แยก GORM จะไปรั่ว domain model นี้ ส่งผลให้ Unit Test ยาก (ต้อง mock DB)
 type ProductEntity struct {
 	gorm.Model
 	Name        string                 `gorm:"not null;index"`
 	Description string                 `gorm:"type:text"`
-	Variant     []ProductVariantEntity `gorm:"foreignKey:ProductID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-	CateGories  []CateGoryEntity       `gorm:"many2many:product_categories;joinForeignKey:product_id;joinReferences:attribute_id"`
+	ImageURLs   pq.StringArray         `gorm:"type:text[]"`
+	Variants    []ProductVariantEntity `gorm:"foreignKey:ProductID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Categories  []CategoryEntity       `gorm:"many2many:product_categories;joinForeignKey:product_id;joinReferences:category_id"`
+	// IsActive แยกจาก DeletedAt (soft delete) เพราะ semantic ต่างกัน:
+	// - DeletedAt = ลบแล้ว ไม่ควรปรากฏทั้ง admin และ frontend
+	// - IsActive = admin ยังเห็น แต่ customer ไม่เห็น (draft/unpublished)
+	IsActive  bool `gorm:"default:true"`
+	CreatedBy uint `gorm:"not null;index"` // Index ไว้เผื่อ search สินค้าตามคนสร้าง
+	UpdatedBy uint `gorm:"not null"`
 }
 
 type ProductVariantEntity struct {
@@ -26,6 +38,9 @@ type ProductVariantEntity struct {
 	AttributeValues []AttributeValueEntity `gorm:"many2many:variant_values;joinForeignKey:variant_id;joinReferences:value_id"`
 }
 
+// ToProductDomain แปลง GORM entity เป็น Domain Object (Anti-Corruption Layer)
+// WHY nil check?
+//   - GORM Preload บางครั้งคืน zero-value struct แทน nil → ป้องกัน nil pointer dereference
 func (e *ProductEntity) ToProductDomain() *domain.Product {
 	if e == nil {
 		return nil
@@ -33,14 +48,14 @@ func (e *ProductEntity) ToProductDomain() *domain.Product {
 
 	deletedAt := gormhelper.GormDeletedAtToTime(&e.DeletedAt)
 
-	categories := make([]domain.CateGory, len(e.CateGories))
-	variants := make([]domain.ProductVariant, len(e.Variant))
+	categories := make([]domain.Category, len(e.Categories))
+	variants := make([]domain.ProductVariant, len(e.Variants))
 
-	for i, c := range e.CateGories {
-		categories[i] = *c.ToCateGoryDomain()
+	for i, c := range e.Categories {
+		categories[i] = *c.ToCategoryDomain()
 	}
 
-	for j, v := range e.Variant {
+	for j, v := range e.Variants {
 		variants[j] = *v.ToProductVariantDomain()
 	}
 
@@ -51,10 +66,19 @@ func (e *ProductEntity) ToProductDomain() *domain.Product {
 		DeletedAt:   deletedAt,
 		Name:        e.Name,
 		Description: e.Description,
+		ImageURLs:   []string(e.ImageURLs),
+		Categories:  categories,
 		Variants:    variants,
+		IsActive:    e.IsActive,
+		CreatedBy:   e.CreatedBy,
+		UpdatedBy:   e.UpdatedBy,
 	}
 }
 
+// ToProductEntity แปลง Domain Object เป็น GORM entity ก่อน save ลง DB
+// WHY เซ็ต gorm.Model.ID ด้วย?
+//   - ถ้า ID = 0 GORM จะ INSERT ถ้า ID > 0 GORM จะ UPDATE
+//   - ทำให้สามารถใช้ function เดียวกันได้ทั้ง Create และ Update
 func ToProductEntity(d *domain.Product) *ProductEntity {
 	if d == nil {
 		return nil
@@ -62,11 +86,11 @@ func ToProductEntity(d *domain.Product) *ProductEntity {
 
 	deleteAt := gormhelper.TimeToGormDeletedAt(d.DeletedAt)
 
-	categories := make([]CateGoryEntity, len(d.CateGories))
+	categories := make([]CategoryEntity, len(d.Categories))
 	variants := make([]ProductVariantEntity, len(d.Variants))
 
-	for i, c := range d.CateGories {
-		categories[i] = *ToCateGoryEntity(&c)
+	for i, c := range d.Categories {
+		categories[i] = *ToCategoryEntity(&c)
 	}
 	for j, v := range d.Variants {
 		variants[j] = *ToProductVariantEntity(&v)
@@ -81,8 +105,12 @@ func ToProductEntity(d *domain.Product) *ProductEntity {
 		},
 		Name:        d.Name,
 		Description: d.Description,
-		Variant:     variants,
-		CateGories:  categories,
+		ImageURLs:   pq.StringArray(d.ImageURLs),
+		Variants:    variants,
+		Categories:  categories,
+		IsActive:    d.IsActive,
+		CreatedBy:   d.CreatedBy,
+		UpdatedBy:   d.UpdatedBy,
 	}
 }
 

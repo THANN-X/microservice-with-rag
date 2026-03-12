@@ -33,7 +33,7 @@ func LoadConfig() *Config {
 		DBHost:     getEnv("DB_HOST_AUTH", "localhost"),
 		DBPort:     getEnv("DB_PORT_AUTH", "5432"),
 		DBUser:     getEnv("DB_USER_AUTH", "myuser"),
-		DBPassword: getEnv("DB_PASSWORD_AUTH", "password"),
+		DBPassword: getEnv("DB_PASSWORD_AUTH", "mypassword"),
 		DBName:     getEnv("DB_NAME_AUTH", "auth_db"),
 	}
 
@@ -48,6 +48,7 @@ func (c *Config) GetDSN() string {
 }
 
 func OpenDatabase(dsn string) *gorm.DB {
+	print(dsn)
 	db, err := database.ConnectPostgres(dsn)
 	if err != nil {
 		panic("failed to connect to database")
@@ -57,7 +58,7 @@ func OpenDatabase(dsn string) *gorm.DB {
 	fmt.Println("Database connected!")
 
 	// Auto-migrate the UserEntity schema
-	err = db.AutoMigrate(&entity.UserEntity{}, &entity.SessionEntity{})
+	err = db.AutoMigrate(&entity.UserEntity{}, &entity.SessionEntity{}, &entity.AdminEntity{})
 	if err != nil {
 		panic("failed to migrate database")
 	}

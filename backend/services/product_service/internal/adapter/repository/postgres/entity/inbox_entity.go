@@ -11,7 +11,15 @@ type InboxEventEntity struct {
 	ProcessedAt time.Time `gorm:"autoCreateTime"`
 }
 
-func (e *InboxEventEntity) ToIndboxEventDomain() *domain.InboxEvent {
+func (InboxEventEntity) TableName() string {
+	return "inbox_event"
+}
+
+func (e *InboxEventEntity) ToInboxEventDomain() *domain.InboxEvent {
+	if e == nil {
+		return nil
+	}
+
 	return &domain.InboxEvent{
 		ID:          e.ID,
 		ConsumerID:  e.ConsumerID,
@@ -19,7 +27,11 @@ func (e *InboxEventEntity) ToIndboxEventDomain() *domain.InboxEvent {
 	}
 }
 
-func ToIndboxEventEntity(d *domain.InboxEvent) *InboxEventEntity {
+func ToInboxEventEntity(d *domain.InboxEvent) *InboxEventEntity {
+	if d == nil {
+		return nil
+	}
+
 	return &InboxEventEntity{
 		ID:          d.ID,
 		ConsumerID:  d.ConsumerID,

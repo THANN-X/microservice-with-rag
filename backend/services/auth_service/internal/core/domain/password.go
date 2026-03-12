@@ -10,15 +10,18 @@ type Password struct {
 	hash string
 }
 
+// Factory function to create Password domain model
 func NewPassword(hash string) Password {
 	return Password{hash: hash}
 }
 
+// String method to get the hashed password
 func (p Password) String() string {
 	return p.hash
 }
 
-func (p *Password) Set(rawPassword string) error {
+// Method to generate hashed password from raw password
+func (p *Password) GeneratePassword(rawPassword string) error {
 
 	if len(rawPassword) < 8 {
 		return bcrypt.ErrHashTooShort
@@ -35,15 +38,15 @@ func (p *Password) Set(rawPassword string) error {
 	return nil
 }
 
-func (p *Password) Check(rawPassword string) error {
+// Method to compare raw password with hashed password
+func (p *Password) ComparePassword(rawPassword string) error {
 
 	err := bcrypt.CompareHashAndPassword([]byte(p.hash), []byte(rawPassword))
 
 	if err != nil {
-		// เช็คว่าถ้าเป็น error รหัสผิด ให้ส่ง Domain Error ของเรากลับไป
+		// เช็คว่าถ้าเป็น error รหัสผิด ให้ส่ง Domain Error กลับไป
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-			// ต้อง return error ที่เราสร้างไว้ในข้อ 1
-			// สมมติว่าอยู่ใน package เดียวกัน (domain) ก็เรียกใช้ได้เลย
+			/* ต้อง return error ที่เราสร้างไว้ที่ (domain) */
 			return ErrIncorrectPassword
 		}
 		return err
