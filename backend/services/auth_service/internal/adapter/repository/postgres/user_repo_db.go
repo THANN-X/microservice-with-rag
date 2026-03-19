@@ -11,29 +11,27 @@ import (
 	"gorm.io/gorm"
 )
 
-// Struct Declaration: Holds the database instance
+// What: userRepositoryDB คือ Postgres implementation ของ UserRepository interface
+// Why:  แยก DB logic ออกจาก domain/service ทำให้เรียกใช้ผ่าน interface และเปลี่ยน DB ได้โดยไม่กระทบโค้ด business
 type userRepositoryDB struct {
 	db *gorm.DB
 }
 
-// Constructor: Creates a new instance of userRepositoryDB
-func NewUserRepositoryDB(db *gorm.DB) port.UserRepository {
+// What: constructor — return เป็น interface เพื่อ enforce Dependency Inversion
+func NewUserRepository(db *gorm.DB) port.UserRepository {
 	return &userRepositoryDB{db: db}
 }
 
-/* Method Implementations:
-Each method implements the UserRepository interface
-and contains the data access logic for user operations*/
-
-// Create adds a new user to the database
+// What: บันทึก user ใหม่ลง DB แล้ว sync ID กลับไปยัง domain object
+// Why:  domain object ต้องรู้ ID ที่ DB generate ไว้เพื่อใช้ในการ create session ต่อไป
 func (r *userRepositoryDB) CreateUser(ctx context.Context, user *domain.User) error {
-	// Create a new user
+	// What: แปลง domain model → GORM entity ก่อนบันทึก — domain ต้องไม่รู้จัก ORM
 	userEntity := entity.ToUserEntity(user)
 
 	if err := r.db.WithContext(ctx).Create(userEntity); err != nil {
 		return err.Error
 	}
-	// Map the generated ID back to the domain user
+	// What: sync ค่าที่ DB generate กลับไปยัง domain object
 	user.ID = userEntity.ID
 	user.CreatedAt = userEntity.CreatedAt
 	user.UpdatedAt = userEntity.UpdatedAt
@@ -41,13 +39,12 @@ func (r *userRepositoryDB) CreateUser(ctx context.Context, user *domain.User) er
 	return nil
 }
 
-// Update modifies an existing user's information
+// What: อัปเดต user ที่มีอยู่แล้วใน DB (save ทั้งแถว)
+// Why:  GORM Save ทำ UPDATE ถ้ามี ID — safe สำหรับ update แบบ full-replace
+// TODO: พิจารณาใช้ Updates แทน Save ถ้าต้องการ partial update เพื่อป้องกัน overwrite field ที่ไม่เป็น zero value
 func (r *userRepositoryDB) UpdateUser(ctx context.Context, user *domain.User) error {
-	// Update user by ID
 	userEntity := entity.ToUserEntity(user)
-	// Use WithContext to pass the context
 	result := r.db.WithContext(ctx).Save(userEntity)
-	// Handle errors
 	if result.Error != nil {
 		return result.Error
 	}
@@ -56,18 +53,16 @@ func (r *userRepositoryDB) UpdateUser(ctx context.Context, user *domain.User) er
 		return result.Error
 	}
 
+	// What: sync UpdatedAt กลับไปยัง domain object
 	user.UpdatedAt = userEntity.UpdatedAt
 
 	return nil
 }
 
-// Delete removes a user by ID
+// What: soft-delete user (GORM เติม deleted_at แทนลบจริง)
 func (r *userRepositoryDB) DeleteUser(ctx context.Context, id uint) error {
-	// Delete user by ID
 	userEntity := &entity.UserEntity{}
-	// Use WithContext to pass the context
 	result := r.db.WithContext(ctx).Delete(userEntity, id)
-	// Handle errors
 	if result.Error != nil {
 		return result.Error
 	}
@@ -79,14 +74,13 @@ func (r *userRepositoryDB) DeleteUser(ctx context.Context, id uint) error {
 	return nil
 }
 
-// FindByID retrieves a user by ID
+// What: ค้นหา user ด้วย primary key
+// Why:  ใช้ First() แทน Find() เพราะเราต้องการ exactly 1 record และให้ ErrRecordNotFound ถ้าไม่เจอ
 func (r *userRepositoryDB) FindByID(ctx context.Context, id uint) (*domain.User, error) {
-	// Find user by ID
 	userEntity := &entity.UserEntity{}
-	// Use WithContext to pass the context
 	result := r.db.WithContext(ctx).First(userEntity, id)
-	// Handle errors
 	if result.Error != nil {
+		// What: แปลง GORM not-found error → domain error เพื่อ decouple DB จาก service
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, domain.ErrUserNotFound
 		}
@@ -95,14 +89,12 @@ func (r *userRepositoryDB) FindByID(ctx context.Context, id uint) (*domain.User,
 	return userEntity.ToUserDomain(), nil
 }
 
-// FindByEmail finds a user by their email address
+// What: ค้นหา user ด้วย email (ใช้ตอน login และตรวจ email ซ้ำ)
 func (r *userRepositoryDB) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
-	// Find user by email
 	userEntity := &entity.UserEntity{}
-	// Use WithContext to pass the context
 	result := r.db.WithContext(ctx).First(userEntity, "email = ?", email)
-	// Handle errors
 	if result.Error != nil {
+		// What: คืน domain.ErrUserNotFound เพื่อให้ service ใช้ errors.Is() ได้ตรง
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, domain.ErrUserNotFound
 		}

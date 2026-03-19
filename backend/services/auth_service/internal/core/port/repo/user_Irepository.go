@@ -5,6 +5,10 @@ import (
 	"context"
 )
 
+// What: UserRepository คือ interface สำหรับเข้าถึงข้อมูล user ใน persistence layer
+// Why:  domain/service ต้อง depend บน interface ไม่ใช่ concrete struct
+//       (ทำให้ test ด้วย mock repo ได้โดยไม่ต้องใช้ DB จริง)
+// TODO: เพิ่ม FindByEmail หรือ pagination method ถ้า admin ต้องการดูรายชื่อ user ทั้งหมด
 type UserRepository interface {
 
 	// Modification

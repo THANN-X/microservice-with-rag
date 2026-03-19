@@ -10,6 +10,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// What: authHandler จัดการ HTTP request สำหรับ login, logout, refresh token
+// Why:  แยก auth route ออกจาก user route เนื่องจาก auth เป็น cross-cutting concern
+//       และเกี่ยวข้องกับทั้ง user และ admin
 type authHandler struct {
 	userSvc   service.UserService
 	adminSvc  service.AdminService
@@ -17,10 +20,13 @@ type authHandler struct {
 	validator *validator.Validate
 }
 
+// What: constructor — inject ทั้ง 3 services
 func NewAuthHandler(userSvc service.UserService, adminSvc service.AdminService, authSvc service.AuthService) *authHandler {
 	return &authHandler{userSvc: userSvc, adminSvc: adminSvc, authSvc: authSvc, validator: validator.New()}
 }
 
+// What: รับ login request ของ user (เอา email + password + device info)
+//       แล้วคืน access_token + refresh_token กลับ
 func (h *authHandler) LoginUser(c *fiber.Ctx) error {
 	req := &dto.LoginRequest{}
 
@@ -32,17 +38,19 @@ func (h *authHandler) LoginUser(c *fiber.Ctx) error {
 		return httpcore.HandleError(c, errs.NewValidationError("Validation failed: "+err.Error()))
 	}
 
+	// What: ส่ง IP และ device info ไปด้วยเพื่อเก็บใน session
 	tokens, err := h.authSvc.LoginUser(c.Context(), req.Email, req.Password, c.IP(), req.DeviceInfo)
-
 	if err != nil {
-		// Map Domain Error to HTTP Error
-		// (ตรงนี้อาจจะทำ Middleware Error Handler แยกก็ได้ครับ)
-		return httpcore.HandleError(c, err) // ให้ Global Error Handler จัดการ หรือ map เองตรงนี้
+		// What: ใช้ httpcore.HandleError เป็น centralized error mapper
+		// TODO: หาก error mapping หลาย pattern แนะนำใช้ Fiber error handler middleware แทน
+		return httpcore.HandleError(c, err)
 	}
 
 	return c.JSON(tokens)
 }
 
+// What: รับ login request ของ admin (เอา username + password)
+//       แล้วคืน access_token + refresh_token กลับ
 func (h *authHandler) LoginAdmin(c *fiber.Ctx) error {
 	req := &dto.LoginAdminRequest{}
 
@@ -55,17 +63,15 @@ func (h *authHandler) LoginAdmin(c *fiber.Ctx) error {
 	}
 
 	tokens, err := h.authSvc.LoginAdmin(c.Context(), req.Username, req.Password, c.IP(), req.DeviceInfo)
-
 	if err != nil {
-		/* Map Domain Error to HTTP Error
-		(ตรงนี้อาจจะทำ Middleware Error Handler แยกก็ได้)*/
-
-		return httpcore.HandleError(c, err) // ให้ Global Error Handler จัดการ หรือ map เอง
+		return httpcore.HandleError(c, err)
 	}
 
 	return c.JSON(tokens)
 }
 
+// What: รับ refresh_token แล้ว revoke session นั้น (logout)
+// Why:  ใช้ refresh_token แทน access_token เพราะ access token อายุสั้นเกินไปแล้ว ไม่มีประโยชน์ในการร้องขอ logout
 func (h *authHandler) Logout(c *fiber.Ctx) error {
 	var req dto.LogoutRequest
 
@@ -75,6 +81,7 @@ func (h *authHandler) Logout(c *fiber.Ctx) error {
 		})
 	}
 
+	// What: validate ว่ามี refresh_token ส่งมา
 	if req.RefreshToken == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "refresh_token is required",
@@ -93,8 +100,10 @@ func (h *authHandler) Logout(c *fiber.Ctx) error {
 	})
 }
 
+// What: รับ refresh_token แล้วออก access_token ใหม่
+// Why:  รองรับการ login ของ client โดยไม่ต้องใส่ credentials ใหม่ทุกครั้ง
 func (h *authHandler) RefreshToken(c *fiber.Ctx) error {
-	// สร้าง Request Struct สำหรับรับ refresh_token
+	// What: parse body สำหรับรับ refresh_token
 	req := &dto.RefreshRequest{}
 	if err := c.BodyParser(req); err != nil {
 		return httpcore.HandleError(c, errs.NewValidationError("Invalid request body or format"))

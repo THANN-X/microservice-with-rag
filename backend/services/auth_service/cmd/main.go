@@ -16,30 +16,41 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// What: Composition Root — จุดเดียวที่ wiring dependency ทั้งหมดเข้าด้วยกัน
+// Why:  ทำให้ inner layers (domain, service) ไม่รู้จัก framework ใด ๆ
+//       และง่ายต่อการ swap implementation ในอนาคต (เช่น เปลี่ยน DB หรือ HTTP framework)
 func main() {
-	// Setup Database
+	// What: โหลด config จาก environment variable แล้วเปิด connection ไปยัง Postgres
 	cfg := config.LoadConfig()
 	dsn := cfg.GetDSN()
 	db := config.OpenDatabase(dsn)
 
-	// Setup Repositories
-	userRepository := repository.NewUserRepositoryDB(db)
+	// What: สร้าง Repository instances — ชั้นที่คุยกับ DB โดยตรง
+	// Why:  แยก Repository ออกเป็น interface ทำให้ service layer test ได้โดยไม่ต้องใช้ DB จริง
+	userRepository := repository.NewUserRepository(db)
 	adminRepository := repository.NewAdminRepository(db)
 	sessionRepository := repository.NewSessionRepository(db)
 
-	// JWT Setup
+	// What: โหลด JWT_SECRET จาก env เพื่อใช้ sign/verify token
 	_ = godotenv.Load()
 	value, _ := os.LookupEnv("JWT_SECRET")
 	if value == "" {
-		value = "my-secret-key-change-me" // Fallback (Dev only)
+		// Why: fallback นี้มีไว้สำหรับ local dev เท่านั้น
+		// TODO: ให้ panic หรือ log warning ถ้าไม่มีค่าใน production environment
+		value = "my-secret-key-change-me"
 	}
 
+	// What: inline middleware สำหรับป้องกัน endpoint สร้าง Admin
+	// Why:  Admin ไม่ควรสมัครเองได้ — ต้องรู้ secret key ของระบบก่อน
+	// TODO: ย้าย adminSecretGuard ออกไปอยู่ใน pkg/middleware เพื่อ reuse ข้าม service
 	adminSecretGuard := func(c *fiber.Ctx) error {
 		expectedSecret := os.Getenv("ADMIN_SECRET_KEY")
 		if expectedSecret == "" {
-			expectedSecret = "super-secret-admin-key" // Fallback (Dev only)
+			// Why: fallback สำหรับ local dev เท่านั้น ห้ามใช้ใน production
+			expectedSecret = "super-secret-admin-key"
 		}
 
+		// What: ดึง secret จาก request header แล้วเปรียบเทียบกับค่าที่ระบบกำหนด
 		clientSecret := c.Get("X-Admin-Secret")
 		if clientSecret != expectedSecret {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -51,51 +62,60 @@ func main() {
 
 	fmt.Println(value)
 
+	// What: JWTService ใช้สำหรับ generate และ validate token ทั้ง access และ refresh
 	jwtService := jwtutils.NewJWTService(value, "ecommerce_app")
 
-	// Setup Services
+	// What: สร้าง Service instances — ชั้น Business Logic
 	userService := service.NewUserService(userRepository)
 	adminService := service.NewAdminService(adminRepository)
+	// Why: authService ต้องรู้จักทั้ง userRepo, adminRepo, sessionRepo
+	//      เพราะ login ได้สองแบบ (user / admin) และต้องจัดการ session เอง
 	authservice := service.NewAuthService(userRepository, adminRepository, sessionRepository, jwtService)
 
-	// Setup Handlers
+	// What: สร้าง Handler instances — ชั้น HTTP Adapter รับ/ส่ง request
 	userHandler := http.NewUserHandler(userService)
 	adminHandler := http.NewAdminHandler(adminService)
 	authHandler := http.NewAuthHandler(userService, adminService, authservice)
 
-	// Middleware Instance
+	// What: สร้าง JWT middleware สำหรับตรวจสอบ access token ใน header
 	authMiddleware := authmiddleware.AuthMiddleware(jwtService)
 
-	// Setup HTTP Handler & Routes
+	// What: สร้าง Fiber app instance
 	app := fiber.New()
 
-	// Public Routes
+	// --- Public Routes (ไม่ต้อง login) ---
+
+	// What: endpoint สมัครสมาชิก user ทั่วไป ไม่ต้องมี token
 	app.Post("/users/register", userHandler.RegisterUser)
 
-	// Protected Route ด้วย Secret Key
-	app.Post("/admin/register", adminSecretGuard, adminHandler.CreateAdmin)
+	// What: endpoint สร้าง admin ต้องมี ADMIN_SECRET_KEY ใน header ก่อน
+	app.Post("/admin/register", adminSecretGuard, adminHandler.RegisterAdmin)
 
-	// Auth Routes
+	// --- Auth Routes ---
 	authGroup := app.Group("/auth")
+	// What: login แล้วรับ access_token + refresh_token กลับมา
 	authGroup.Post("/user-login", authHandler.LoginUser)
 	authGroup.Post("/admin-login", authHandler.LoginAdmin)
+	// What: revoke refresh token ทำให้ session หมดอายุทันที
 	authGroup.Post("/logout", authHandler.Logout)
+	// What: แลก refresh_token เก่า → ได้ access_token ใหม่
 	authGroup.Post("/refresh-token", authHandler.RefreshToken)
 
-	// Protected Routes
-	// กลุ่มนี้จะถูกดักด้วย Middleware ก่อนเสมอ
+	// --- Protected Routes (ต้องมี valid access_token) ---
+	// Why: ใช้ Group + Middleware เพื่อให้ทุก route ในกลุ่มถูก intercept โดย authMiddleware
 	protected := app.Group("/users", authMiddleware)
 
-	// User Profile Routes
-	protected.Post("/update/:id", userHandler.UpdateUserProfile)
+	protected.Post("/update/:id", userHandler.UpdateProfile)
 	protected.Post("/chgpass/:id", userHandler.ChangePassword)
-	// ต้องประกาศเส้นทางนี้ก่อน เพื่อป้องกันการชนกับ dynamic param
+	// Why: ต้องประกาศ /me ก่อน /:id เสมอ — Fiber จับ route แบบ first-match
+	//      ถ้าประกาศ /:id ก่อน คำว่า "me" จะถูกดักเป็น param แทน
 	protected.Get("/me", userHandler.GetMyProfile)
-	// ดึงข้อมูลโปรไฟล์ของตัวเอง
-	protected.Get("/:id", userHandler.GetUserProfile)
+	// What: ดึงโปรไฟล์ของ user ตาม ID (admin หรือเจ้าของเท่านั้น)
+	protected.Get("/:id", userHandler.GetProfile)
 
 	logs.Info("Auth service started at port 3001")
 
-	// Start the server
+	// What: เริ่ม listen HTTP server ที่ port 3001
+	// TODO: รองรับ graceful shutdown (trap SIGINT/SIGTERM แล้ว app.ShutdownWithTimeout)
 	app.Listen(":3001")
 }

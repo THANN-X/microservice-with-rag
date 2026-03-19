@@ -2,7 +2,8 @@ package service
 
 import "auth_service/internal/core/domain"
 
-// Request struct for creating a new admin
+// What: CreateAdminRequest เป็น input DTO สำหรับสร้าง admin ใหม่
+// TODO: เพิ่ม validate tag เช่น required, min= ในทุก field
 type CreateAdminRequest struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
@@ -12,7 +13,8 @@ type CreateAdminRequest struct {
 	Address   string `json:"address"`
 }
 
-// Request struct for updating admin information
+// What: UpdateAdminRequest เป็น input DTO สำหรับอัปเดตข้อมูล admin
+// TODO: ยังไม่มี handler/service ใช้ DTO นี้ — implement ต่อไป
 type UpdateAdminRequest struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
@@ -20,6 +22,7 @@ type UpdateAdminRequest struct {
 	Address   string `json:"address"`
 }
 
+// What: AdminResponse เป็น output DTO ที่ตัด sensitive field ออก
 type AdminResponse struct {
 	ID        uint   `json:"id"`
 	FirstName string `json:"first_name"`
@@ -30,6 +33,7 @@ type AdminResponse struct {
 	Role      string `json:"role"`
 }
 
+// What: แปลง domain.Admin → AdminResponse ตัด sensitive data ออก
 func ToAdminResponse(a *domain.Admin) *AdminResponse {
 	return &AdminResponse{
 		ID:        a.ID,

@@ -10,21 +10,26 @@ import (
 	"gorm.io/gorm"
 )
 
+// What: adminRepositoryDB คือ Postgres implementation ของ AdminRepository interface
 type adminRepositoryDB struct {
 	db *gorm.DB
 }
 
+// What: constructor — return เป็น interface เพื่อ Dependency Inversion
 func NewAdminRepository(db *gorm.DB) port.AdminRepository {
 	return &adminRepositoryDB{db: db}
 }
 
+// What: บันทึก admin ใหม่ลง DB แล้ว sync ID + timestamp กลับไปยัง domain object
 func (r *adminRepositoryDB) CreateAdmin(ctx context.Context, admin *domain.Admin) error {
+	// What: แปลง domain model → GORM entity
 	adminEntity := entity.ToAdminEntity(admin)
 
 	if err := r.db.WithContext(ctx).Create(adminEntity); err != nil {
 		return err.Error
 	}
 
+	// What: sync ค่าที่ DB generate กลับไปยัง domain object
 	admin.ID = adminEntity.ID
 	admin.CreatedAt = adminEntity.CreatedAt
 	admin.UpdatedAt = adminEntity.UpdatedAt
@@ -32,11 +37,12 @@ func (r *adminRepositoryDB) CreateAdmin(ctx context.Context, admin *domain.Admin
 	return nil
 }
 
+// What: อัปเดต admin ที่มีอยู่แล้ว
+// TODO: เพิ่ม handler + service route สำหรับ update admin profile
 func (r *adminRepositoryDB) UpdateAdmin(ctx context.Context, admin *domain.Admin) error {
 	adminEntity := entity.ToAdminEntity(admin)
 
 	result := r.db.WithContext(ctx).Save(adminEntity)
-
 	if result.Error != nil {
 		return result.Error
 	}
@@ -50,12 +56,12 @@ func (r *adminRepositoryDB) UpdateAdmin(ctx context.Context, admin *domain.Admin
 	return nil
 }
 
+// What: soft-delete admin (GORM จะเติม deleted_at แทนลบจริง)
+// TODO: เพิ่ม handler + service route สำหรับ delete admin
 func (r *adminRepositoryDB) DeleteAdmin(ctx context.Context, id uint) error {
-
 	adminEntity := &entity.AdminEntity{}
 
 	result := r.db.WithContext(ctx).Delete(adminEntity, id)
-
 	if result.Error != nil {
 		return result.Error
 	}
@@ -67,14 +73,16 @@ func (r *adminRepositoryDB) DeleteAdmin(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (r *adminRepositoryDB) FindByUserName(ctx context.Context, username string) (*domain.Admin, error) {
-
+// What: ค้นหา admin ด้วย username — ใช้ตอน admin login
+// Why:  คืน nil (ไม่ใช่ error) ถ้าไม่เจอ — ต่างจาก user repo ที่คืน domain error
+// TODO: อาจลองเปลี่ยนเป็น return domain.ErrAdminNotFound pattern เดียวกันกับ user repo เพื่อ consistency
+func (r *adminRepositoryDB) FindByUsername(ctx context.Context, username string) (*domain.Admin, error) {
 	adminEntity := &entity.AdminEntity{}
 
 	result := r.db.WithContext(ctx).First(adminEntity, "username = ?", username)
-
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// What: คืน nil แทน error เพื่อให้ service ตรวจสอบเองว่า admin == nil
 			return nil, nil
 		}
 		return nil, result.Error

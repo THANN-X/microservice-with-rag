@@ -5,6 +5,8 @@ import (
 	"context"
 )
 
+// What: AdminRepository คือ interface สำหรับเข้าถึงข้อมูล admin ใน persistence layer
+// TODO: เพิ่ม FindByEmail ถ้า admin รองรับ email-based login ในอนาคต
 type AdminRepository interface {
 
 	// Modification
@@ -13,6 +15,6 @@ type AdminRepository interface {
 	DeleteAdmin(ctx context.Context, id uint) error
 
 	// Retrieval
-	FindByUserName(ctx context.Context, username string) (*domain.Admin, error)
+	FindByUsername(ctx context.Context, username string) (*domain.Admin, error)
 	// FindByEmail(ctx context.Context, email string) (*domain.Admin, error)
 }
