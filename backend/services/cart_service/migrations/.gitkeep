@@ -1,0 +1,3 @@
+# migrations/ — placeholder directory
+# GORM AutoMigrate จัดการ schema ใน config.go
+# ถ้าต้องการ migration files แบบ explicit ให้ใช้ golang-migrate
