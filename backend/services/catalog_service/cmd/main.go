@@ -12,12 +12,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/joho/godotenv"
 	"logs"
 )
@@ -90,16 +87,6 @@ func main() {
 
 	// --- HTTP server ---
 	app := fiber.New()
-
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: os.Getenv("ALLOWED_ORIGINS"),
-		AllowHeaders: "Origin, Content-Type, Accept",
-	}))
-
-	app.Use(limiter.New(limiter.Config{
-		Max:        200,
-		Expiration: 1 * time.Minute,
-	}))
 
 	handler := cataloghttp.NewCatalogHandler(queryService)
 

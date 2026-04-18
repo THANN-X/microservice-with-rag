@@ -4,7 +4,6 @@ import (
 	"authmiddleware"
 	"context"
 	"fmt"
-	"jwtutils"
 	"log"
 	"os"
 	"os/signal"
@@ -18,12 +17,9 @@ import (
 	"product_service/internal/core/service/query"
 	"product_service/internal/core/service/worker"
 	"syscall"
-	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/swagger"
 	"github.com/joho/godotenv"
 
@@ -64,18 +60,7 @@ func main() {
 	catCmdRepo, catQueryRepo := repository.NewCategoryRepository(db)
 	attrCmdRepo, attrQueryRepo := repository.NewAttributeRepository(db)
 
-	// JWT Setup
 	_ = godotenv.Load()
-	value, _ := os.LookupEnv("JWT_SECRET")
-	if value == "" {
-		value = "my-secret-key-change-me" // Fallback (Dev only)
-	}
-
-	fmt.Println(value)
-
-	// Middleware Instance
-	jwtService := jwtutils.NewJWTService(value, "ecommerce_app")
-	authMiddleware := authmiddleware.AuthMiddleware(jwtService)
 
 	// === DEPENDENCY INJECTION (Services) ===
 	cmdService := command.NewProductCommandService(cmdRepo, outboxRepo, inboxRepo)
@@ -146,18 +131,6 @@ func main() {
 	// Setup HTTP Handler & Routes
 	app := fiber.New()
 
-	// CORS Middleware
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: os.Getenv("ALLOWED_ORIGINS"),
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-	}))
-
-	// Rate Limiter Middleware
-	app.Use(limiter.New(limiter.Config{
-		Max:        100,
-		Expiration: 1 * time.Minute,
-	}))
-
 	// HTTP Handler
 	handler := http.NewProductHandler(cmdService, queryService)
 	catHandler := http.NewCategoryHandler(catCmdService, catQueryService)
@@ -170,8 +143,9 @@ func main() {
 	products.Get("/", handler.ListProducts)
 	products.Get("/:id", handler.GetProduct)
 
-	// Admin Only Routes
-	adminGroup := products.Group("/admin", authMiddleware, authmiddleware.AdminGuard)
+	// Admin Only Routes — BFF validate JWT + admin role แล้ว, service เช็คซ้ำ (defense-in-depth)
+	internalAuth := authmiddleware.InternalAuthMiddleware()
+	adminGroup := products.Group("/admin", internalAuth, authmiddleware.InternalAdminGuard)
 
 	// Create
 	adminGroup.Post("/", handler.CreateProduct)
@@ -194,7 +168,7 @@ func main() {
 	categories.Get("/", catHandler.ListCategories)
 	categories.Get("/:id", catHandler.GetCategory)
 
-	catAdminGroup := categories.Group("/admin", authMiddleware, authmiddleware.AdminGuard)
+	catAdminGroup := categories.Group("/admin", internalAuth, authmiddleware.InternalAdminGuard)
 	catAdminGroup.Post("/", catHandler.CreateCategory)
 	catAdminGroup.Put("/:id", catHandler.UpdateCategory)
 	catAdminGroup.Delete("/:id", catHandler.DeleteCategory)
@@ -205,7 +179,7 @@ func main() {
 	attributes.Get("/", attrHandler.ListAttributes)
 	attributes.Get("/:id", attrHandler.GetAttribute)
 
-	attrAdminGroup := attributes.Group("/admin", authMiddleware, authmiddleware.AdminGuard)
+	attrAdminGroup := attributes.Group("/admin", internalAuth, authmiddleware.InternalAdminGuard)
 	attrAdminGroup.Post("/", attrHandler.CreateAttribute)
 	attrAdminGroup.Put("/:id", attrHandler.UpdateAttribute)
 	attrAdminGroup.Delete("/:id", attrHandler.DeleteAttribute)

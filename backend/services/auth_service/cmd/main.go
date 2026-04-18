@@ -78,7 +78,8 @@ func main() {
 	authHandler := http.NewAuthHandler(userService, adminService, authservice)
 
 	// What: สร้าง JWT middleware สำหรับตรวจสอบ access token ใน header
-	authMiddleware := authmiddleware.AuthMiddleware(jwtService)
+	// Why:  BFF ทำ JWT validation แล้ว — service แค่อ่าน X-User-ID/X-Role จาก headers
+	internalAuth := authmiddleware.InternalAuthMiddleware()
 
 	// What: สร้าง Fiber app instance
 	app := fiber.New()
@@ -103,7 +104,7 @@ func main() {
 
 	// --- Protected Routes (ต้องมี valid access_token) ---
 	// Why: ใช้ Group + Middleware เพื่อให้ทุก route ในกลุ่มถูก intercept โดย authMiddleware
-	protected := app.Group("/users", authMiddleware)
+	protected := app.Group("/users", internalAuth)
 
 	protected.Post("/update/:id", userHandler.UpdateProfile)
 	protected.Post("/chgpass/:id", userHandler.ChangePassword)

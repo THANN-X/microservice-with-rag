@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	orderhistoryhttp "order_history_service/internal/adapter/handler/http"
 	"order_history_service/internal/adapter/messaging/consumer"
@@ -16,14 +15,11 @@ import (
 	"order_history_service/internal/core/service/query"
 
 	authmiddleware "authmiddleware"
-	"jwtutils"
 
 	"logs"
 
 	"github.com/IBM/sarama"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/joho/godotenv"
 )
 
@@ -56,13 +52,6 @@ func main() {
 
 	cmdService := command.NewOrderHistoryCommandService(writeRepo, inboxRepo)
 	queryService := query.NewOrderHistoryQueryService(readRepo)
-
-	// --- JWT ---
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "default-secret"
-	}
-	jwtService := jwtutils.NewJWTService(jwtSecret, "order-history-service")
 
 	// --- Kafka consumer ---
 	brokers := os.Getenv("KAFKA_BROKERS")
@@ -103,20 +92,10 @@ func main() {
 	// --- HTTP server ---
 	app := fiber.New()
 
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: os.Getenv("ALLOWED_ORIGINS"),
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-	}))
-
-	app.Use(limiter.New(limiter.Config{
-		Max:        200,
-		Expiration: 1 * time.Minute,
-	}))
-
 	handler := orderhistoryhttp.NewOrderHistoryHandler(queryService)
 
-	// order-history routes — requires authentication
-	history := app.Group("/order-history", authmiddleware.AuthMiddleware(jwtService))
+	// order-history routes — BFF validate JWT แล้ว ส่ง X-User-ID/X-Role มา
+	history := app.Group("/order-history", authmiddleware.InternalAuthMiddleware())
 	history.Get("/", handler.ListMyOrders)
 	history.Get("/:orderId", handler.GetOrder)
 
