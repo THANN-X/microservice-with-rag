@@ -90,14 +90,18 @@ func ToDomain_Categories(categoryIDs []uint) []domain.Category {
 //   - Domain Object นำไป return เป็น HTTP response โดยตรงไม่ได้
 //     (Domain อาจมี field ที่ไม่ควร expose เช่น domainEvents, internal fields)
 //   - DTO ควบคุม API contract แยกจาก Domain model
-// NOTE: Categories ถูก flatten เป็น []string (name only) เพื่อประหยัด response size
+//
+// NOTE: Categories map เป็น []ProductCategoryRes (ID + Name) เพื่อให้ Frontend ใช้งานได้ครบโดยไม่ต้อง call เพิ่ม
 func ToProductRes(product *domain.Product) *dto.ProductRes {
 
-	categories := make([]string, len(product.Categories))
+	categories := make([]dto.ProductCategoryRes, len(product.Categories))
 	variant := make([]dto.ProductVariantRes, len(product.Variants))
 
 	for i, c := range product.Categories {
-		categories[i] = c.Name
+		categories[i] = dto.ProductCategoryRes{
+			ID:   c.ID,
+			Name: c.Name,
+		}
 	}
 
 	for i, v := range product.Variants {
@@ -111,12 +115,14 @@ func ToProductRes(product *domain.Product) *dto.ProductRes {
 		}
 
 		variant[i] = dto.ProductVariantRes{
-			ID:       v.ID,
-			Sku:      v.Sku,
-			Price:    v.Price,
-			Stock:    v.Stock,
-			IsActive: v.IsActive,
-			Options:  option,
+			ID:        v.ID,
+			Sku:       v.Sku,
+			Name:      v.NameVariant,
+			Price:     v.Price,
+			Stock:     v.Stock,
+			IsActive:  v.IsActive,
+			ImageUrls: v.ImageURLs,
+			Options:   option,
 		}
 	}
 
@@ -124,6 +130,7 @@ func ToProductRes(product *domain.Product) *dto.ProductRes {
 		ID:          product.ID,
 		Name:        product.Name,
 		Description: product.Description,
+		ImageUrls:   product.ImageURLs,
 		IsActive:    product.IsActive,
 		Variants:    variant,
 		Categories:  categories,

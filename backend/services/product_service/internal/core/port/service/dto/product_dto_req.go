@@ -82,6 +82,21 @@ type SetVariantActiveReq struct {
 	IsActive  bool `json:"is_active"`
 }
 
+// UpdateProductImagesReq ใช้แทนที่รูปภาพระดับ Product ทั้งหมด
+// ส่ง image_urls ชุดใหม่มาแทน ชุดเก่าทั้งหมด (replace, not append)
+type UpdateProductImagesReq struct {
+	ProductID uint     `json:"product_id"` // populate จาก URL param
+	ImageURLs []string `json:"image_urls" validate:"required,min=1,dive,url"`
+}
+
+// UpdateVariantImagesReq ใช้แทนที่รูปภาพของ Variant เฉพาะตัว (เช่น รูปสีแดง / สีน้ำเงิน)
+// ส่ง image_urls ชุดใหม่มาแทน ชุดเก่าทั้งหมด (replace, not append)
+type UpdateVariantImagesReq struct {
+	ProductID uint     `json:"product_id"` // populate จาก URL param
+	VariantID uint     `json:"variant_id"` // populate จาก URL param
+	ImageURLs []string `json:"image_urls" validate:"required,min=1,dive,url"`
+}
+
 // Event Payload ที่ได้รับจาก Message Broker (เช่น Order Service ส่งมา)
 type ReserveStockReq struct {
 	MessageID string             `json:"-"` // รับจาก Header/Metadata ของ Kafka/RabbitMQ

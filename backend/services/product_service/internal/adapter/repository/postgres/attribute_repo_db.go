@@ -34,12 +34,11 @@ func (r *attributeRepository) CreateAttribute(ctx context.Context, attr *domain.
 }
 
 func (r *attributeRepository) UpdateAttribute(ctx context.Context, attr *domain.Attribute) error {
-	// ใช้ Model + Where + Update แทน Save เพราะ Attribute มีแค่ field เดียวที่ update ได้ (Name)
-	// ป้องกัน GORM ไป override field อื่น เช่น created_at จากค่าที่ Domain ไม่ได้ set
-	return r.db.WithContext(ctx).
-		Model(&entity.AttributeEntity{}).
-		Where("id = ?", attr.ID).
-		Update("name", attr.Name).Error
+	// ใช้ Save แทน targeted Update เพราะรับ Domain Object ทั้งก้อนมาแล้ว
+	// สอดคล้องกับ DDD pattern "load whole → modify via domain method → save whole"
+	// GORM จะไม่ overwrite created_at เพราะมัน autoCreateTime (set ได้เฉพาะตอน INSERT เท่านั้น)
+	e := entity.ToAttributeEntityFromDomain(attr)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *attributeRepository) DeleteAttribute(ctx context.Context, id uint) error {

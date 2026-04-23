@@ -26,6 +26,7 @@ type EmbeddedVariant struct {
 	Price      float64
 	Stock      int
 	IsActive   bool
+	ImageURLs  []string
 	Attributes []VariantAttribute
 }
 

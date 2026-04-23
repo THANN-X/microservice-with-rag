@@ -159,3 +159,35 @@ func (s *catalogCommandService) HandleStockAdjusted(ctx context.Context, message
 
 	return s.markProcessed(ctx, messageID)
 }
+
+func (s *catalogCommandService) HandleProductImagesUpdated(ctx context.Context, messageID string, evt *events.ProductImagesUpdatedEvent) error {
+	processed, err := s.isProcessed(ctx, messageID)
+	if err != nil {
+		return err
+	}
+	if processed {
+		return nil
+	}
+
+	if err := s.writeRepo.UpdateProductImages(ctx, evt.ProductID, evt.ImageURLs); err != nil {
+		return err
+	}
+
+	return s.markProcessed(ctx, messageID)
+}
+
+func (s *catalogCommandService) HandleProductVariantImagesUpdated(ctx context.Context, messageID string, evt *events.ProductVariantImagesUpdatedEvent) error {
+	processed, err := s.isProcessed(ctx, messageID)
+	if err != nil {
+		return err
+	}
+	if processed {
+		return nil
+	}
+
+	if err := s.writeRepo.UpdateVariantImages(ctx, evt.ProductID, evt.VariantID, evt.ImageURLs); err != nil {
+		return err
+	}
+
+	return s.markProcessed(ctx, messageID)
+}

@@ -35,6 +35,7 @@ type ProductVariantEntity struct {
 	Price           float64                `gorm:"not null;type:decimal(10,2);default:0"`
 	Stock           int                    `gorm:"not null;default:0"`
 	IsActive        bool                   `gorm:"default:true"`
+	ImageURLs       pq.StringArray         `gorm:"type:text[]"`
 	AttributeValues []AttributeValueEntity `gorm:"many2many:variant_values;joinForeignKey:variant_id;joinReferences:value_id"`
 }
 
@@ -133,6 +134,7 @@ func (e *ProductVariantEntity) ToProductVariantDomain() *domain.ProductVariant {
 		Price:       e.Price,
 		Stock:       e.Stock,
 		IsActive:    e.IsActive,
+		ImageURLs:   []string(e.ImageURLs),
 		Attributes:  attributes,
 	}
 }
@@ -158,6 +160,7 @@ func ToProductVariantEntity(d *domain.ProductVariant) *ProductVariantEntity {
 		Price:           d.Price,
 		Stock:           d.Stock,
 		IsActive:        d.IsActive,
+		ImageURLs:       pq.StringArray(d.ImageURLs),
 		AttributeValues: attributes,
 	}
 }

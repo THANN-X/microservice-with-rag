@@ -256,19 +256,14 @@ func (s *productCommandService) AddVariant(ctx context.Context, userID uint, req
 // ทำไมถึงไม่ใช้ RunInTx?
 //   - เป็น single UPDATE แค่ 1 statement ไม่มี domain event ที่ต้องเขียน outbox
 //   - ใช้ RunInTx จะเพิ่ม overhead โดยไม่จำเป็น
+// WHY ไม่ Load product ก่อน?
+//   - SetProductActive ใน repo เช็ค RowsAffected == 0 แล้วคืน ErrRecordNotFound เองอยู่แล้ว
+//   - Load whole aggregate (พร้อม Variants/Categories) แค่เพื่อเช็ค existence นั้นเปลืองโดยไม่จำเป็น
 func (s *productCommandService) SetProductActive(ctx context.Context, userID uint, productID uint, active bool) error {
-	// Verify product exists before issuing the targeted UPDATE
-	_, err := s.cmdRepo.GetProductByID(ctx, productID)
-
-	if err != nil {
+	if err := s.cmdRepo.SetProductActive(ctx, productID, active); err != nil {
 		if errors.Is(err, domain.ErrRecordNotFound) {
 			return errs.NewNotFoundError(fmt.Sprintf("product with ID %d not found", productID))
 		}
-		logs.Error(err)
-		return errs.NewUnexpectedError()
-	}
-
-	if err := s.cmdRepo.SetProductActive(ctx, productID, active); err != nil {
 		logs.Error(err)
 		return errs.NewUnexpectedError()
 	}
@@ -363,7 +358,13 @@ func (s *productCommandService) AdjustStock(ctx context.Context, userID uint, re
 //   - concurrent orders เข้ามาพร้อมกัน → in-memory check จะ race condition
 //   - SQL `WHERE stock >= qty` atomic เห็น 0 rows = ไม่พอส่ง InsufficientStockError
 func (s *productCommandService) ReserveStock(ctx context.Context, req *dto.ReserveStockReq) error {
-	return s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
+	// WHY แยก tx สำหรับ success vs insufficient stock ออกจากกัน?
+	//   - Success path: DecreaseStock หลายรายการใน TX เดียว — ถ้าล้มต้อง rollback ทั้งหมด
+	//   - Insufficient stock: ไม่มีอะไรต้อง rollback (ไม่ได้ตัด stock เลย) แต่ต้องส่ง FAILED event
+	//     ใน TX ใหม่เพื่อ close Saga → order_service รับแล้ว cancel order
+	//   - ถ้ารวม TX เดียว: FAILED event อาจถูก rollback ไปพร้อมกัน → Saga ค้าง
+
+	txErr := s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
 		/*protect race condition
 
 		Load Aggregate Root (เพื่อเช็คว่ามีสินค้านี้จริงไหม)
@@ -405,11 +406,17 @@ func (s *productCommandService) ReserveStock(ctx context.Context, req *dto.Reser
 			} */
 
 			// DecreaseStock จะเช็ค stock >= qty ให้เองใน Repo (Atomic Update)
+			// WHY return ErrNoDataModified as-is (ไม่ wrap)?
+			//   - Caller ด้านนอก TX จะ errors.Is() เพื่อแยก "stock ไม่พอ" ออกจาก transient errors
+			//   - ถ้า wrap เป็น AppError ตรงนี้ → errors.Is จะพลาด sentinel
 			if err = s.cmdRepo.DecreaseStock(txCtx, item.VariantID, item.Qty); err != nil {
 
 				if errors.Is(err, domain.ErrNoDataModified) {
 					logs.Error("Failed to decrease stock: variant not found or stock insufficient")
-					return errs.NewInsufficientStockError("stock not enough")
+					// WHY return domain.ErrNoDataModified แทน errs.NewInsufficientStockError?
+					//   - เราต้องการให้ TX rollback (stock ไม่ถูกตัด) แล้วส่งสัญญาณออกนอกว่า "ไม่พอ"
+					//   - errs.AppError ไม่ผ่าน errors.Is ด้านนอกได้ (ไม่ใช่ sentinel)
+					return domain.ErrNoDataModified
 				}
 
 				logs.Error(err)
@@ -470,6 +477,60 @@ func (s *productCommandService) ReserveStock(ctx context.Context, req *dto.Reser
 
 		return nil
 	})
+
+	// WHAT: Insufficient stock path — Saga must be closed gracefully
+	// WHY แยก TX ใหม่?
+	//   - TX แรก rollback ไปแล้ว (DecreaseStock ไม่สำเร็จ) — ไม่มี side effects ค้างอยู่
+	//   - ต้องส่ง StockReservedEvent{Status:"FAILED"} ใน TX ใหม่ เพื่อให้ Outbox ส่งต่อ Kafka
+	//   - ถ้าไม่ส่ง FAILED event → order_service ไม่รู้ว่า stock ไม่พอ → Order ค้างเป็น PENDING ตลอดไป
+	//   - Return nil หลังจากส่ง FAILED event เพื่อบอก Kafka consumer ว่า "ประมวลผลเสร็จแล้ว อย่า retry"
+	if errors.Is(txErr, domain.ErrNoDataModified) {
+		return s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
+			failedEvt := &events.StockReservedEvent{
+				OrderID:    req.OrderID,
+				MessageID:  req.MessageID,
+				Status:     "FAILED", // Saga signal → order_service จะ cancel order
+				Items:      nil,
+				OccurredAt: time.Now(),
+			}
+
+			payloadBytes, err := json.Marshal(failedEvt)
+			if err != nil {
+				logs.Error(err)
+				return errs.NewUnexpectedError()
+			}
+
+			outboxMessage := domain.NewOutboxMessage(
+				"stock.events",
+				fmt.Sprintf("order-%s", req.OrderID),
+				"STOCK",
+				failedEvt.EventName(),
+				string(payloadBytes),
+			)
+
+			if err = s.outboxRepo.Save(txCtx, outboxMessage); err != nil {
+				logs.Error(err)
+				return errs.NewUnexpectedError()
+			}
+
+			// WHY บันทึก inbox ใน FAILED path ด้วย?
+			//   - ป้องกัน duplicate processing ถ้า Kafka ส่ง OrderCreated ซ้ำ
+			//   - ครั้งถัดไปจะเห็น processed=true → return nil โดยไม่ต้อง re-run TX ใดๆ
+			inboxEvent := &domain.InboxEvent{
+				ID:         req.MessageID,
+				ConsumerID: "product_service_stock",
+			}
+			if err = s.inboxRepo.SaveProcessedMessage(txCtx, inboxEvent); err != nil {
+				logs.Error(err)
+				return errs.NewUnexpectedError()
+			}
+
+			logs.Info(fmt.Sprintf("Stock insufficient for order %s — sent FAILED StockReservedEvent to close Saga", req.OrderID))
+			return nil
+		})
+	}
+
+	return txErr
 }
 
 // USE CASE: Release Stock (Compensating Transaction / Saga Rollback)
@@ -568,6 +629,74 @@ func (s *productCommandService) ReleaseStock(ctx context.Context, req *dto.Reser
 		err = s.inboxRepo.SaveProcessedMessage(txCtx, inboxEvent)
 
 		if err != nil {
+			logs.Error(err)
+			return errs.NewUnexpectedError()
+		}
+
+		return nil
+	})
+}
+
+// USE CASE: Update Product Images (Admin)
+//
+// WHAT: แทนที่ image list ระดับ Product ทั้งหมดด้วยชุดใหม่
+// WHY Load-Modify-Save?
+//   - ใช้ pattern เดียวกับ UpdateProductGeneralInfo เพื่อความ consistent
+//   - Domain method บังคับผ่าน aggregate root เหมือนเดิม
+func (s *productCommandService) UpdateProductImages(ctx context.Context, userID uint, req *dto.UpdateProductImagesReq) error {
+	return s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
+		product, err := s.cmdRepo.GetProductByID(txCtx, req.ProductID)
+		if err != nil {
+			logs.Error(err)
+			return errs.NewConflictError("failed to get product for update")
+		}
+		if product == nil {
+			return errs.NewNotFoundError(fmt.Sprintf("product with ID %d not found", req.ProductID))
+		}
+
+		product.UpdateProductImages(req.ImageURLs, userID)
+
+		if err = s.cmdRepo.UpdateProduct(txCtx, product); err != nil {
+			logs.Error(err)
+			return errs.NewUnexpectedError()
+		}
+
+		if err = s.cmdRepo.SaveDomainEvents(txCtx, product); err != nil {
+			logs.Error(err)
+			return errs.NewUnexpectedError()
+		}
+
+		return nil
+	})
+}
+
+// USE CASE: Update Variant Images (Admin)
+//
+// WHAT: แทนที่ image list ของ Variant ที่ระบุด้วยชุดใหม่
+// WHY ผ่าน Aggregate Root?
+//   - ตรวจสอบ variant ownership (variant ต้องอยู่ใน product ที่ระบุ)
+//   - Domain method UpdateVariantImages() คืน ErrRecordNotFound ถ้า variant ไม่ตรงกับ product
+func (s *productCommandService) UpdateVariantImages(ctx context.Context, userID uint, req *dto.UpdateVariantImagesReq) error {
+	return s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
+		product, err := s.cmdRepo.GetProductByID(txCtx, req.ProductID)
+		if err != nil {
+			logs.Error(err)
+			return errs.NewConflictError("failed to get product for update")
+		}
+		if product == nil {
+			return errs.NewNotFoundError(fmt.Sprintf("product with ID %d not found", req.ProductID))
+		}
+
+		if err = product.UpdateVariantImages(req.VariantID, req.ImageURLs, userID); err != nil {
+			return errs.NewNotFoundError(fmt.Sprintf("variant with ID %d not found in product %d", req.VariantID, req.ProductID))
+		}
+
+		if err = s.cmdRepo.UpdateProduct(txCtx, product); err != nil {
+			logs.Error(err)
+			return errs.NewUnexpectedError()
+		}
+
+		if err = s.cmdRepo.SaveDomainEvents(txCtx, product); err != nil {
 			logs.Error(err)
 			return errs.NewUnexpectedError()
 		}

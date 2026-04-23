@@ -473,3 +473,96 @@ func (h *productHandler) SetVariantActive(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": msg})
 }
+
+// PATCH /products/admin/:id/images
+// UpdateProductImages แทนที่รูปภาพของ Product ทั้งหมด (Admin เท่านั้น)
+// @Summary Replace product-level images (Admin)
+// @Description Replace the full image list of a product with a new set of URLs.
+// @Tags Products (Command)
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Product ID"
+// @Param body body dto.UpdateProductImagesReq true "Image URLs"
+// @Success 200 {object} map[string]string "Product images updated successfully"
+// @Failure 400 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Router /products/admin/{id}/images [patch]
+func (h *productHandler) UpdateProductImages(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError("Invalid product ID"))
+	}
+
+	req := &dto.UpdateProductImagesReq{}
+	if err := c.BodyParser(req); err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError("Invalid request body"))
+	}
+
+	req.ProductID = uint(id)
+
+	if err := h.validator.Struct(req); err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError(err.Error()))
+	}
+
+	requesterID, ok := c.Locals("user_id").(uint)
+	if !ok {
+		return httpcore.HandleError(c, errs.NewUnauthorizedError("Invalid user ID in token"))
+	}
+
+	if err := h.cmdService.UpdateProductImages(c.UserContext(), requesterID, req); err != nil {
+		return httpcore.HandleError(c, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Product images updated successfully"})
+}
+
+// PATCH /products/admin/:id/variants/:variantId/images
+// UpdateVariantImages แทนที่รูปภาพของ Variant เฉพาะตัว (Admin เท่านั้น)
+// @Summary Replace variant images (Admin)
+// @Description Replace the full image list of a specific variant (e.g. colour-specific photos).
+// @Tags Variants (Command)
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Product ID"
+// @Param variantId path int true "Variant ID"
+// @Param body body dto.UpdateVariantImagesReq true "Image URLs"
+// @Success 200 {object} map[string]string "Variant images updated successfully"
+// @Failure 400 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Router /products/admin/{id}/variants/{variantId}/images [patch]
+func (h *productHandler) UpdateVariantImages(c *fiber.Ctx) error {
+	pId, err := c.ParamsInt("id")
+	if err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError("Invalid product ID"))
+	}
+
+	vId, err := c.ParamsInt("variantId")
+	if err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError("Invalid variant ID"))
+	}
+
+	req := &dto.UpdateVariantImagesReq{}
+	if err := c.BodyParser(req); err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError("Invalid request body"))
+	}
+
+	req.ProductID = uint(pId)
+	req.VariantID = uint(vId)
+
+	if err := h.validator.Struct(req); err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError(err.Error()))
+	}
+
+	requesterID, ok := c.Locals("user_id").(uint)
+	if !ok {
+		return httpcore.HandleError(c, errs.NewUnauthorizedError("Invalid user ID in token"))
+	}
+
+	if err := h.cmdService.UpdateVariantImages(c.UserContext(), requesterID, req); err != nil {
+		return httpcore.HandleError(c, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Variant images updated successfully"})
+}

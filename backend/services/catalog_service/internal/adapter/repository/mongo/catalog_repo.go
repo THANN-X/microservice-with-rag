@@ -38,6 +38,7 @@ type variantDoc struct {
 	Price      float64        `bson:"price"`
 	Stock      int            `bson:"stock"`
 	IsActive   bool           `bson:"is_active"`
+	ImageURLs  []string       `bson:"image_urls"`
 	Attributes []attributeDoc `bson:"attributes"`
 }
 
@@ -213,6 +214,45 @@ func (r *catalogRepository) MarkDeleted(ctx context.Context, productID uint) err
 	return err
 }
 
+func (r *catalogRepository) UpdateProductImages(ctx context.Context, productID uint, imageURLs []string) error {
+	if imageURLs == nil {
+		imageURLs = []string{}
+	}
+	filter := bson.M{"product_id": productID, "is_deleted": false}
+	update := bson.M{
+		"$set": bson.M{
+			"image_urls": imageURLs,
+			"updated_at": time.Now(),
+		},
+	}
+	result, err := r.col.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errs.NewNotFoundError("product not found in catalog")
+	}
+	return nil
+}
+
+func (r *catalogRepository) UpdateVariantImages(ctx context.Context, productID uint, variantID uint, imageURLs []string) error {
+	if imageURLs == nil {
+		imageURLs = []string{}
+	}
+	filter := bson.M{"product_id": productID, "is_deleted": false}
+	update := bson.M{
+		"$set": bson.M{
+			"variants.$[elem].image_urls": imageURLs,
+			"updated_at":                  time.Now(),
+		},
+	}
+	opts := options.Update().SetArrayFilters(options.ArrayFilters{
+		Filters: []interface{}{bson.M{"elem.variant_id": variantID}},
+	})
+	_, err := r.col.UpdateOne(ctx, filter, update, opts)
+	return err
+}
+
 // --- Read Methods ---
 
 func (r *catalogRepository) FindByProductID(ctx context.Context, productID uint) (*domain.CatalogProduct, error) {
@@ -308,6 +348,7 @@ func toVariantDoc(v domain.EmbeddedVariant) variantDoc {
 		Price:      v.Price,
 		Stock:      v.Stock,
 		IsActive:   v.IsActive,
+		ImageURLs:  v.ImageURLs,
 		Attributes: attrs,
 	}
 }
@@ -339,6 +380,7 @@ func toDomain(doc *catalogDocument) *domain.CatalogProduct {
 			Price:      v.Price,
 			Stock:      v.Stock,
 			IsActive:   v.IsActive,
+			ImageURLs:  v.ImageURLs,
 			Attributes: attrs,
 		}
 	}

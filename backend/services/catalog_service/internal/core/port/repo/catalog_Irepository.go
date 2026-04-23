@@ -23,6 +23,12 @@ type CatalogWriteRepository interface {
 	// UpdateVariantStock อัปเดต stock ของ variant ที่ระบุ
 	UpdateVariantStock(ctx context.Context, productID uint, variantID uint, newStock int) error
 
+	// UpdateProductImages แทนที่ image list ระดับ product
+	UpdateProductImages(ctx context.Context, productID uint, imageURLs []string) error
+
+	// UpdateVariantImages แทนที่ image list ของ variant ที่ระบุ
+	UpdateVariantImages(ctx context.Context, productID uint, variantID uint, imageURLs []string) error
+
 	// MarkDeleted soft-delete — ตั้ง is_deleted=true, is_active=false
 	MarkDeleted(ctx context.Context, productID uint) error
 }

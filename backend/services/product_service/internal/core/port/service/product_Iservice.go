@@ -20,6 +20,10 @@ type ProductCommandService interface {
 	AddVariant(ctx context.Context, userID uint, req *dto.AddVariantReq) error
 	UpdateVariantPrice(ctx context.Context, userID uint, req *dto.UpdateVariantPriceReq) error
 
+	// Image Management (Admin)
+	UpdateProductImages(ctx context.Context, userID uint, req *dto.UpdateProductImagesReq) error
+	UpdateVariantImages(ctx context.Context, userID uint, req *dto.UpdateVariantImagesReq) error
+
 	// Stock Management (Admin Manual Adjust)
 	AdjustStock(ctx context.Context, userID uint, req *dto.AdjustStockReq) error
 

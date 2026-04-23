@@ -163,6 +163,10 @@ func main() {
 	adminGroup.Patch("/:id/active", handler.SetProductActive)
 	adminGroup.Patch("/:id/variants/:variantId/active", handler.SetVariantActive)
 
+	// Image Management
+	adminGroup.Patch("/:id/images", handler.UpdateProductImages)
+	adminGroup.Patch("/:id/variants/:variantId/images", handler.UpdateVariantImages)
+
 	// Category Routes
 	categories := app.Group("/categories")
 	categories.Get("/", catHandler.ListCategories)

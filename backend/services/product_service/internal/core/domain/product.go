@@ -35,6 +35,7 @@ type ProductVariant struct {
 	Price       float64
 	Stock       int
 	IsActive    bool
+	ImageURLs   []string
 	Attributes  []VariantAttribute
 }
 
@@ -249,6 +250,41 @@ func (p *Product) AddNewVariant(v ProductVariant) {
 		Attributes: attrs,
 		OccurredAt: time.Now(),
 	})
+}
+
+// UpdateProductImages replaces the product-level image list.
+func (p *Product) UpdateProductImages(imageURLs []string, updatedBy uint) {
+	p.ImageURLs = imageURLs
+	p.UpdatedBy = updatedBy
+	p.UpdatedAt = time.Now()
+
+	p.addDomainEvent(&events.ProductImagesUpdatedEvent{
+		ProductID:  p.ID,
+		ImageURLs:  imageURLs,
+		UpdatedBy:  updatedBy,
+		OccurredAt: p.UpdatedAt,
+	})
+}
+
+// UpdateVariantImages replaces image list of a specific variant.
+func (p *Product) UpdateVariantImages(variantID uint, imageURLs []string, updatedBy uint) error {
+	for i := range p.Variants {
+		if p.Variants[i].ID == variantID {
+			p.Variants[i].ImageURLs = imageURLs
+			p.UpdatedBy = updatedBy
+			p.UpdatedAt = time.Now()
+
+			p.addDomainEvent(&events.ProductVariantImagesUpdatedEvent{
+				ProductID:  p.ID,
+				VariantID:  variantID,
+				ImageURLs:  imageURLs,
+				UpdatedBy:  updatedBy,
+				OccurredAt: p.UpdatedAt,
+			})
+			return nil
+		}
+	}
+	return ErrRecordNotFound
 }
 
 // Adjust Stock for Stock Take or Damage

@@ -19,6 +19,13 @@ type Attribute struct {
 	Name string
 }
 
+// Update เป็น domain method สำหรับแก้ไข Attribute
+// บังคับให้ทุก update ผ่าน method นี้เสมอ เพื่อให้ business rules ถูก enforce ที่ Domain layer
+// (ตาม pattern เดียวกับ Category.UpdateCategory และ Product.UpdateInfo)
+func (a *Attribute) Update(name string) {
+	a.Name = name
+}
+
 // AttributeValue คือค่าที่เป็นไปได้ของ Attribute แต่ละตัว
 // เช่น Attribute "Color" จะมี Values: "Red", "Blue", "Green"
 // เหตุที่เก็บ AttributeID ไว้ใน Domain เพื่อให้ Service Layer รู้ว่า Value นี้อยู่ภายใต้ Attribute ไหน

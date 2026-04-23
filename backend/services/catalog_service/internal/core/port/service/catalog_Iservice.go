@@ -15,6 +15,8 @@ type CatalogCommandService interface {
 	HandleProductVariantAdded(ctx context.Context, messageID string, evt *events.ProductVariantAddedEvent) error
 	HandleProductDeleted(ctx context.Context, messageID string, evt *events.ProductDeletedEvent) error
 	HandleStockAdjusted(ctx context.Context, messageID string, evt *events.StockAdjustedEvent) error
+	HandleProductImagesUpdated(ctx context.Context, messageID string, evt *events.ProductImagesUpdatedEvent) error
+	HandleProductVariantImagesUpdated(ctx context.Context, messageID string, evt *events.ProductVariantImagesUpdatedEvent) error
 }
 
 // CatalogQueryService — Read Side ให้ BFF ใช้ query สินค้าสำหรับลูกค้า

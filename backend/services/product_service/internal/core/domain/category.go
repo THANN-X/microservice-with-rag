@@ -27,15 +27,12 @@ func (c *Category) UpdateCategory(req *Category) {
 	if req.Name != "" {
 		c.Name = req.Name
 	}
-
 	if req.Slug != "" {
 		c.Slug = req.Slug
 	}
-
 	if req.Description != "" {
 		c.Description = req.Description
 	}
-
 	// IsActive ถูก assign ทุกครั้งโดยไม่ตรวจ เพราะ false เป็น valid value ที่หมายถึง "ซ่อน Category นี้"
 	c.IsActive = req.IsActive
 }

@@ -29,15 +29,22 @@ func (s *attributeCommandService) CreateAttribute(ctx context.Context, req *dto.
 	return s.cmdRepo.CreateAttribute(ctx, attr)
 }
 
+// UpdateAttribute ใช้ pattern "Load → Modify → Save" เหมือนกับ Category และ Product
+// ทำไมต้อง Load ก่อน?
+//  1. ได้ 404 ทันทีถ้า Attribute ไม่มีอยู่ (แทน silent 0 rows)
+//  2. การ Modify ผ่าน domain method (existing.Update) เพื่อ enforce business rules ที่ Domain layer
+//     ป้องกักันการ set field ตรงๆ ข้ามหัว domain ใน Service
 func (s *attributeCommandService) UpdateAttribute(ctx context.Context, req *dto.UpdateAttributeReq) error {
-	_, err := s.queryRepo.GetAttributeByID(ctx, req.AttributeID)
+	existing, err := s.queryRepo.GetAttributeByID(ctx, req.AttributeID)
 	if err != nil {
 		if errors.Is(err, domain.ErrRecordNotFound) {
 			return errs.NewNotFoundError("Attribute not found")
 		}
 		return errs.NewUnexpectedError()
 	}
-	return s.cmdRepo.UpdateAttribute(ctx, &domain.Attribute{ID: req.AttributeID, Name: req.Name})
+	// Modify ผ่าน domain method — ไม่ set field โดยตรง
+	existing.Update(req.Name)
+	return s.cmdRepo.UpdateAttribute(ctx, existing)
 }
 
 func (s *attributeCommandService) DeleteAttribute(ctx context.Context, id uint) error {
