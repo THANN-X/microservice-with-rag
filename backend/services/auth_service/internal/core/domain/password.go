@@ -8,8 +8,9 @@ import (
 
 // What: Password เป็น Value Object ที่ encapsulate hash string ไว้ภายใน
 // Why:  ซ่อน bcrypt implementation ออกจาก caller — ทำให้เปลี่ยน hashing algorithm
-//       ได้ในอนาคตโดยไม่กระทบโค้ดภายนอก
-//       field `hash` เป็น unexported เพื่อป้องกันการแก้ไขตรง ๆ จากภายนอก
+//
+//	ได้ในอนาคตโดยไม่กระทบโค้ดภายนอก
+//	field `hash` เป็น unexported เพื่อป้องกันการแก้ไขตรง ๆ จากภายนอก
 type Password struct {
 	hash string
 }
@@ -45,7 +46,8 @@ func (p *Password) GeneratePassword(rawPassword string) error {
 
 // What: เปรียบเทียบ plain-text กับ hash — คืน ErrIncorrectPassword ถ้าไม่ตรง
 // Why:  แปลง bcrypt error เป็น domain error เพื่อให้ caller ไม่ต้อง import bcrypt
-//       และสามารถ assert ด้วย errors.Is(err, domain.ErrIncorrectPassword) ได้
+//
+//	และสามารถ assert ด้วย errors.Is(err, domain.ErrIncorrectPassword) ได้
 func (p *Password) ComparePassword(rawPassword string) error {
 	err := bcrypt.CompareHashAndPassword([]byte(p.hash), []byte(rawPassword))
 	if err != nil {
