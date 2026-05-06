@@ -7,8 +7,8 @@ import (
 	dto "cart_service/internal/core/port/service/dto"
 	"cart_service/internal/core/port/service/mapper"
 	"context"
-	"errs"
 	"errors"
+	"errs"
 	"logs"
 )
 
@@ -41,7 +41,8 @@ func (s *cartCommandService) AddItem(ctx context.Context, userID uint, req *dto.
 	if err != nil {
 		return nil, errs.NewUnexpectedError()
 	}
-	return mapper.ToCartRes(updatedCart), nil
+	res := mapper.ToCartRes(updatedCart)
+	return res, nil
 }
 
 // RemoveItem — ลบ variant ออกจากตะกร้า
@@ -63,7 +64,8 @@ func (s *cartCommandService) RemoveItem(ctx context.Context, userID uint, varian
 	if err != nil {
 		return nil, errs.NewUnexpectedError()
 	}
-	return mapper.ToCartRes(updatedCart), nil
+	res := mapper.ToCartRes(updatedCart)
+	return res, nil
 }
 
 // UpdateItemQuantity — กำหนดจำนวน item ตรงๆ
@@ -96,7 +98,8 @@ func (s *cartCommandService) UpdateItemQuantity(ctx context.Context, userID uint
 	if err != nil {
 		return nil, errs.NewUnexpectedError()
 	}
-	return mapper.ToCartRes(updatedCart), nil
+	res := mapper.ToCartRes(updatedCart)
+	return res, nil
 }
 
 // ClearCart — ล้างของในตะกร้าทั้งหมด

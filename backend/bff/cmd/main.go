@@ -91,6 +91,7 @@ func main() {
 	authHandler := handler.NewProxyHandler(authProxy, "/api/auth")
 	productHandler := handler.NewProxyHandler(productProxy, "/api")
 	cartHandler := handler.NewProxyHandler(cartProxy, "/api")
+	cartCompositionHandler := handler.NewCartCompositionHandler(cartURL, catalogURL)
 	orderHandler := handler.NewProxyHandler(orderProxy, "/api")
 	catalogHandler := handler.NewProxyHandler(catalogProxy, "/api")
 	orderHistoryHandler := handler.NewProxyHandler(orderHistoryProxy, "/api")
@@ -113,8 +114,11 @@ func main() {
 		log.Printf("WARNING: ไม่สามารถเชื่อมต่อ AI service ได้: %v", err)
 	}
 
-	chatService := service.NewChatService(aiClient)
-	chatHandler := handler.NewChatHandler(chatService)
+	var chatHandler *handler.ChatHandler
+	if aiClient != nil {
+		chatService := service.NewChatService(aiClient)
+		chatHandler = handler.NewChatHandler(chatService)
+	}
 
 	// ═══════════════════════════════════════════════════════════════════════════
 	// 5) JWT + Security Middleware
@@ -163,10 +167,15 @@ func main() {
 	//   /chat ต้องอยู่ก่อน wildcard เพื่อไม่ให้ถูก catch ก่อน
 
 	// --- AI Chat (gRPC → Protobuf) ---
-	// What: Chat endpoint — BFF แปลง REST → gRPC → REST (protocol bridge)
-	// Why:  endpoint เดียวที่ใช้ gRPC เพราะ AI service เป็น Python + gRPC server
-	//       ไม่ใช่ transparent proxy — BFF ต้อง serialize/deserialize protobuf
-	app.Post("/chat", chatHandler.Chat)
+	if chatHandler != nil {
+		app.Post("/chat", chatHandler.Chat)
+	} else {
+		app.Post("/chat", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": "AI service is not available",
+			})
+		})
+	}
 
 	// --- Auth Service (REST Proxy) ---
 	// What: forward ทุก request ที่ขึ้นต้นด้วย /api/auth ไปยัง auth-service (:3001)
@@ -208,6 +217,9 @@ func main() {
 	//   PUT    /api/cart/items/:id    → cart:3004/cart/items/:id (เปลี่ยนจำนวน)
 	//   DELETE /api/cart/items/:id    → cart:3004/cart/items/:id (ลบสินค้า)
 	//   DELETE /api/cart              → cart:3004/cart (ล้างตะกร้า)
+	// Composition Route (specific first-match):
+	//   GET    /api/cart              → BFF compose (cart + catalog variant images)
+	app.Get("/api/cart", cartCompositionHandler.GetCart)
 	app.All("/api/cart", cartHandler.Handle)
 	app.All("/api/cart/*", cartHandler.Handle)
 

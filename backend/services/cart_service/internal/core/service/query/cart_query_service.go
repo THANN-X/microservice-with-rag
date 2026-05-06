@@ -7,8 +7,8 @@ import (
 	dto "cart_service/internal/core/port/service/dto"
 	"cart_service/internal/core/port/service/mapper"
 	"context"
-	"errs"
 	"errors"
+	"errs"
 )
 
 type cartQueryService struct {
@@ -35,5 +35,6 @@ func (s *cartQueryService) GetCart(ctx context.Context, userID uint) (*dto.CartR
 		}
 		return nil, errs.NewUnexpectedError()
 	}
-	return mapper.ToCartRes(cart), nil
+	res := mapper.ToCartRes(cart)
+	return res, nil
 }
