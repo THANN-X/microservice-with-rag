@@ -6,30 +6,37 @@ import (
 	service "auth_service/internal/core/port/service"
 	dto "auth_service/internal/core/port/service/dto"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"errs"
 	"jwtutils"
 	"logs"
 	"time"
+
+	"google.golang.org/api/idtoken"
 )
 
 // What: authService จัดการ login, logout และ token rotation
 // Why:  แยก auth logic ออกจาก user/admin service เพราะมัน cross-cutting
-//       (ทั้ง user และ admin login ผ่านที่เดียวกัน)
+//
+//	(ทั้ง user และ admin login ผ่านที่เดียวกัน)
 type authService struct {
-	userRepo    repo.UserRepository
-	adminRepo   repo.AdminRepository
-	sessionRepo repo.SessionRepository
-	jwtService  *jwtutils.JWTService
+	userRepo       repo.UserRepository
+	adminRepo      repo.AdminRepository
+	sessionRepo    repo.SessionRepository
+	jwtService     *jwtutils.JWTService
+	googleClientID string
 }
 
 // What: constructor — inject dependencies ทั้งหมดที่ auth service ต้องการ
-func NewAuthService(userRepo repo.UserRepository, adminRepo repo.AdminRepository, sessionRepo repo.SessionRepository, jwtService *jwtutils.JWTService) service.AuthService {
+func NewAuthService(userRepo repo.UserRepository, adminRepo repo.AdminRepository, sessionRepo repo.SessionRepository, jwtService *jwtutils.JWTService, googleClientID string) service.AuthService {
 	return &authService{
-		userRepo:    userRepo,
-		adminRepo:   adminRepo,
-		sessionRepo: sessionRepo,
-		jwtService:  jwtService,
+		userRepo:       userRepo,
+		adminRepo:      adminRepo,
+		sessionRepo:    sessionRepo,
+		jwtService:     jwtService,
+		googleClientID: googleClientID,
 	}
 }
 
@@ -181,7 +188,8 @@ func (s *authService) Logout(ctx context.Context, refreshToken string) error {
 // What: ใช้ refresh token ที่ valid เพื่อออก access token ใหม่
 // Why:  access token มีอายุสั้น — user ไม่ต้อง login ใหม่ทุกครั้งที่หมดอายุ
 // TODO: พิจารณา refresh token rotation (ออก refresh ใหม่ + revoke อันเก่า)
-//       ช่วยลด risk กรณี refresh token ถูก leak
+//
+//	ช่วยลด risk กรณี refresh token ถูก leak
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResponse, error) {
 	// What: validate signature และ claims ของ JWT ก่อน
 	claims, err := s.jwtService.ValidateToken(refreshToken)
@@ -243,4 +251,112 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		AccessToken:  newAccessToken,
 		RefreshToken: refreshToken,
 	}, nil
+}
+
+// What: Google OAuth login — verify Google ID token แล้ว find-or-create user
+// Why:  ใช้ google.golang.org/api/idtoken แทน manual http.Get เพราะ:
+//   - Cache public keys ไว้ใน memory → verify offline, เร็วกว่ามาก
+//   - ตรวจ aud (client ID) และ exp อัตโนมัติตาม JWT spec
+func (s *authService) GoogleLoginUser(ctx context.Context, idToken, ipAddress, deviceInfo string) (*dto.LoginResponse, error) {
+	// What: ตรวจสอบ signature, exp, aud ด้วย library — caches JWKS อัตโนมัติ
+	// Why:  ถ้า googleClientID ว่าง ("") library จะ skip aud check
+	//       ควรตั้ง GOOGLE_CLIENT_ID เสมอเพื่อ security สูงสุด
+	payload, err := idtoken.Validate(ctx, idToken, s.googleClientID)
+	if err != nil {
+		logs.Error(err)
+		return nil, errs.NewUnauthorizedError("invalid Google ID token")
+	}
+
+	// What: ดึงข้อมูล user จาก verified claims
+	email, _ := payload.Claims["email"].(string)
+	emailVerified, _ := payload.Claims["email_verified"].(bool)
+	givenName, _ := payload.Claims["given_name"].(string)
+	familyName, _ := payload.Claims["family_name"].(string)
+	name, _ := payload.Claims["name"].(string)
+
+	if !emailVerified {
+		return nil, errs.NewValidationError("Google email is not verified")
+	}
+
+	if email == "" {
+		return nil, errs.NewValidationError("could not retrieve email from Google token")
+	}
+
+	// What: ค้นหา user ด้วย email — ถ้าไม่มีให้สร้างใหม่ (find-or-create)
+	user, err := s.userRepo.FindByEmail(ctx, email)
+	if err != nil {
+		if !errors.Is(err, domain.ErrUserNotFound) {
+			logs.Error(err)
+			return nil, errs.NewUnexpectedError()
+		}
+
+		firstName := givenName
+		if firstName == "" {
+			firstName = name
+		}
+
+		newUser := &domain.User{
+			FirstName: firstName,
+			LastName:  familyName,
+			Email:     email,
+			Phone:     "",
+			Address:   "",
+		}
+
+		// What: ตั้ง Random Password ที่คาดเดาไม่ได้ (True Random)
+		// Why: ปลอดภัยกว่าการเอา Sub มาต่อ String เพราะหากมีช่องโหว่ให้ Login ด้วย Email ปกติ แฮกเกอร์ก็เดารหัสผ่านนี้ไม่ได้
+		secureRandomPwd, _ := generateSecureToken(32)
+		if err := newUser.SetPassword(secureRandomPwd); err != nil {
+			logs.Error(err)
+			return nil, errs.NewUnexpectedError()
+		}
+
+		if err := s.userRepo.CreateUser(ctx, newUser); err != nil {
+			logs.Error(err)
+			return nil, errs.NewUnexpectedError()
+		}
+		user = newUser
+	}
+
+	// What: ออก JWT tokens เหมือน login ปกติ
+	accessToken, err := s.jwtService.GenerateToken(user.ID, "customer", jwtutils.AccessToken)
+	if err != nil {
+		logs.Error(err)
+		return nil, errs.NewValidationError("access generate token error")
+	}
+
+	refreshToken, err := s.jwtService.GenerateToken(user.ID, "customer", jwtutils.RefreshToken)
+	if err != nil {
+		logs.Error(err)
+		return nil, errs.NewValidationError("refresh generate token error")
+	}
+
+	session := &domain.Session{
+		UserID:       &user.ID,
+		AdminID:      nil,
+		RefreshToken: refreshToken,
+		DeviceInfo:   deviceInfo,
+		IPAddress:    ipAddress,
+		ExpiredAt:    time.Now().Add(7 * 24 * time.Hour),
+		IsRevoked:    false,
+	}
+
+	if err = s.sessionRepo.CreateSession(ctx, session); err != nil {
+		logs.Error(err)
+		return nil, err
+	}
+
+	return &dto.LoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}, nil
+}
+
+// Helper function สำหรับสร้าง True Random String
+func generateSecureToken(length int) (string, error) {
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }

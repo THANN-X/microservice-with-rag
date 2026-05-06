@@ -70,7 +70,7 @@ func main() {
 	adminService := service.NewAdminService(adminRepository)
 	// Why: authService ต้องรู้จักทั้ง userRepo, adminRepo, sessionRepo
 	//      เพราะ login ได้สองแบบ (user / admin) และต้องจัดการ session เอง
-	authservice := service.NewAuthService(userRepository, adminRepository, sessionRepository, jwtService)
+	authservice := service.NewAuthService(userRepository, adminRepository, sessionRepository, jwtService, cfg.GoogleClientID)
 
 	// What: สร้าง Handler instances — ชั้น HTTP Adapter รับ/ส่ง request
 	userHandler := http.NewUserHandler(userService)
@@ -101,6 +101,8 @@ func main() {
 	authGroup.Post("/logout", authHandler.Logout)
 	// What: แลก refresh_token เก่า → ได้ access_token ใหม่
 	authGroup.Post("/refresh-token", authHandler.RefreshToken)
+	// What: Google OAuth — รับ Google ID token แล้ว find-or-create user + ออก JWT
+	authGroup.Post("/google", authHandler.GoogleLogin)
 
 	// --- Protected Routes (ต้องมี valid access_token) ---
 	// Why: ใช้ Group + Middleware เพื่อให้ทุก route ในกลุ่มถูก intercept โดย authMiddleware

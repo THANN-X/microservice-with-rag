@@ -30,3 +30,4 @@ require (
 )
 
 replace jwtutils => ../pkg/utils/jwtutils
+

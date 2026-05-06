@@ -50,6 +50,12 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   kafka-ui:
@@ -62,14 +68,34 @@ services:
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
     depends_on:
       - kafka
-    restart: unless-stopped # Application Services
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    container_name: catalog-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
+      MONGO_INITDB_DATABASE: catalog_db
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s # Application Services
+      
   auth-service-app:
     build:
       context: .
       dockerfile: backend/services/auth_service/Dockerfile
     container_name: auth-service-app
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     depends_on:
       db:
         condition: service_healthy
@@ -80,19 +106,20 @@ services:
       - DB_NAME_AUTH=auth_db
       - DB_USER_AUTH=${APP_DB_USER}
       - DB_PASSWORD_AUTH=${APP_DB_PASSWORD}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
 
   product-service-app:
     build:
       context: .
       dockerfile: backend/services/product_service/Dockerfile
     container_name: product-service-app
-    ports:
-      - "3002:3002"
+    expose:
+      - "3002"
     depends_on:
       db:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
     environment:
       - APP_PORT=3002
       - DB_HOST_PRODUCT=db
@@ -106,31 +133,67 @@ services:
       context: .
       dockerfile: backend/services/order_service/Dockerfile
     container_name: order-service-app
-    ports:
-      - "3003:3003"
+    expose:
+      - "3003"
     depends_on:
       db:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
     environment:
       - APP_PORT=3003
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=order_db
-      - DB_USER=${APP_DB_USER}
-      - DB_PASSWORD=${APP_DB_PASSWORD}
+      - DB_HOST_ORDER=db
+      - DB_PORT_ORDER=5432
+      - DB_NAME_ORDER=order_db
+      - DB_USER_ORDER=${APP_DB_USER}
+      - DB_PASSWORD_ORDER=${APP_DB_PASSWORD}
       - KAFKA_BROKERS=kafka:9092
+
+  cart-service-app:
+    build:
+      context: .
+      dockerfile: backend/services/cart_service/Dockerfile
+    container_name: cart-service-app
+    expose:
+      - "3004"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - APP_PORT=3004
+      - DB_HOST_CART=db
+      - DB_PORT_CART=5432
+      - DB_NAME_CART=cart_db
+      - DB_USER_CART=${APP_DB_USER}
+      - DB_PASSWORD_CART=${APP_DB_PASSWORD}
   bff-service-app:
-    build: ./backend/bff
+    build:
+      context: .
+      dockerfile: backend/bff/Dockerfile
     container_name: bff-service-app
     ports:
       - "8080:8080"
     environment:
-      - APP_PORT=8080 # Database connection details
+      - APP_PORT=8080
+      # REST Proxy — backend service URLs (ใช้ container name เป็น hostname)
       - AUTH_SERVICE_URL=auth-service-app:3001
+      - PRODUCT_SERVICE_URL=product-service-app:3002
+      - ORDER_SERVICE_URL=order-service-app:3003
+      - CART_SERVICE_URL=cart-service-app:3004
+      - CATALOG_SERVICE_URL=catalog-service-app:3005
+      - ORDER_HISTORY_SERVICE_URL=order-history-service-app:3006
+      # gRPC — AI service
+      - AI_SERVICE_URL=ai-service-app:50051
+      - ALLOWED_ORIGINS=http://localhost:3000
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - auth-service-app
+      - product-service-app
+      - order-service-app
+      - cart-service-app
+      - catalog-service-app
+      - order-history-service-app
+      - ai-service-app
 
   frontend-app:
     build:
@@ -150,7 +213,83 @@ services:
       - /app/node_modules
       - /app/.next
 
+  catalog-service-app:
+    build:
+      context: .
+      dockerfile: backend/services/catalog_service/Dockerfile
+    container_name: catalog-service-app
+    expose:
+      - "3005"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      - APP_PORT=3005
+      - MONGO_URI_CATALOG=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-password}@catalog-mongo:27017/catalog_db?authSource=admin
+      - MONGO_DB_CATALOG=catalog_db
+      - KAFKA_BROKERS=kafka:9092
+
+  order-history-service-app:
+    build:
+      context: .
+      dockerfile: backend/services/order_history_service/Dockerfile
+    container_name: order-history-service-app
+    expose:
+      - "3006"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      - APP_PORT=3006
+      - MONGO_URI_ORDER_HISTORY=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-password}@catalog-mongo:27017/order_history_db?authSource=admin
+      - MONGO_DB_ORDER_HISTORY=order_history_db
+      - KAFKA_BROKERS=kafka:9092
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ai-service-app:
+    build:
+      context: .
+      dockerfile: backend/services/ai_service/Dockerfile
+    container_name: ai-service-app
+    expose:
+      - "50051"
+      - "8000"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      - GRPC_PORT=50051
+      - HTTP_PORT=8000
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - KAFKA_BROKERS=kafka:9092
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  mongo_data:
+  qdrant_data:
 
 

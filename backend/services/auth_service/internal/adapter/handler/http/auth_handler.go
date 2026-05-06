@@ -120,3 +120,28 @@ func (h *authHandler) RefreshToken(c *fiber.Ctx) error {
 
 	return c.JSON(tokens)
 }
+
+// What: รับ Google ID token จาก frontend แล้ว verify + find-or-create user
+// Why:  frontend ใช้ Google Identity Services เพื่อรับ credential (JWT) แล้วส่งมาที่นี่
+//       backend verify กับ Google แล้วออก token ของระบบให้
+func (h *authHandler) GoogleLogin(c *fiber.Ctx) error {
+	var req struct {
+		IDToken    string `json:"id_token"    validate:"required"`
+		DeviceInfo string `json:"device_info"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError("Invalid request body or format"))
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		return httpcore.HandleError(c, errs.NewValidationError("Validation failed: "+err.Error()))
+	}
+
+	tokens, err := h.authSvc.GoogleLoginUser(c.Context(), req.IDToken, c.IP(), req.DeviceInfo)
+	if err != nil {
+		return httpcore.HandleError(c, err)
+	}
+
+	return c.JSON(tokens)
+}

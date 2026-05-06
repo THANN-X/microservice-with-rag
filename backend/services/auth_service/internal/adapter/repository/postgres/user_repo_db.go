@@ -28,8 +28,8 @@ func (r *userRepositoryDB) CreateUser(ctx context.Context, user *domain.User) er
 	// What: แปลง domain model → GORM entity ก่อนบันทึก — domain ต้องไม่รู้จัก ORM
 	userEntity := entity.ToUserEntity(user)
 
-	if err := r.db.WithContext(ctx).Create(userEntity); err != nil {
-		return err.Error
+	if result := r.db.WithContext(ctx).Create(userEntity); result.Error != nil {
+		return result.Error
 	}
 	// What: sync ค่าที่ DB generate กลับไปยัง domain object
 	user.ID = userEntity.ID

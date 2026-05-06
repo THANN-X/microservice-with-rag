@@ -14,4 +14,6 @@ type AuthService interface {
 	LoginAdmin(ctx context.Context, username, password, ipAddress, deviceInfo string) (*dto.LoginResponse, error)
 	Logout(ctx context.Context, refreshToken string) error
 	RefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResponse, error)
+	// What: Google OAuth — รับ ID token จาก Google แล้ว find-or-create user
+	GoogleLoginUser(ctx context.Context, idToken, ipAddress, deviceInfo string) (*dto.LoginResponse, error)
 }

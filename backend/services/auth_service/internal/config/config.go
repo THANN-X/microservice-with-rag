@@ -11,14 +11,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// What: Config เก็บค่าที่ต้องใช้เชื่อมต่อ Database
+// What: Config เก็บค่าที่ต้องใช้เชื่อมต่อ Database และ external services
 // Why:  รวม config ไว้ใน struct เดียวเพื่อส่งต่อได้ง่ายและ test ได้
 type Config struct {
-	DBHost     string
-	DBPort     string
-	DBUser     string
-	DBPassword string
-	DBName     string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPassword     string
+	DBName         string
+	GoogleClientID string
 }
 
 // What: อ่าน environment variables แล้ว map ลง Config struct
@@ -38,11 +39,12 @@ func LoadConfig() *Config {
 
 	// Why: แต่ละ service ใช้ prefix ต่างกัน (DB_HOST_AUTH) เพื่อให้อยู่ร่วมกันใน docker-compose ได้
 	config := &Config{
-		DBHost:     getEnv("DB_HOST_AUTH", "localhost"),
-		DBPort:     getEnv("DB_PORT_AUTH", "5432"),
-		DBUser:     getEnv("DB_USER_AUTH", "myuser"),
-		DBPassword: getEnv("DB_PASSWORD_AUTH", "mypassword"),
-		DBName:     getEnv("DB_NAME_AUTH", "auth_db"),
+		DBHost:         getEnv("DB_HOST_AUTH", "localhost"),
+		DBPort:         getEnv("DB_PORT_AUTH", "5432"),
+		DBUser:         getEnv("DB_USER_AUTH", "myuser"),
+		DBPassword:     getEnv("DB_PASSWORD_AUTH", "mypassword"),
+		DBName:         getEnv("DB_NAME_AUTH", "auth_db"),
+		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", ""),
 	}
 
 	return config
