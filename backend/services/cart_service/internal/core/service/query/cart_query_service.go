@@ -1,3 +1,7 @@
+// WHAT: CartQueryService — read-only use cases สำหรับ cart
+// WHY แยก Query จาก Command Service?
+//   - Query ไม่มี side effect → ไม่ต้องการ TX
+//   - ในอนาคต swap ไปใช้ cache layer (Redis) ได้โดยไม่กระทบ Command side
 package query
 
 import (

@@ -1,3 +1,22 @@
+// WHAT: CatalogCommandService — event consumer ที่ sync product data ลง MongoDB (write side)
+//
+// WHY ต้องมี catalog_service แยกจาก product_service?
+//   - product_service เป็น source of truth (PostgreSQL, normalized)
+//   - catalog_service เป็น read-optimized view สำหรับ shop/search (MongoDB, denormalized)
+//     → variant + category embed อยู่ใน document เดียว → ค้นหาเร็วโดยไม่ต้อง JOIN
+//   - CQRS: write ผ่าน product_service → catalog_service sync ผ่าน Kafka event
+//
+// Inbox Pattern (เหมือน order_history_service):
+//   - ทุก handler ตรวจ messageID ก่อน + mark processed หลัง
+//   - consumerID = "catalog-service" (namespace ไม่ซ้ำกับ consumer อื่น)
+//
+// Events ที่ handle:
+//   ProductCreatedEvent      → Upsert empty product doc
+//   ProductInfoUpdatedEvent  → UpdateInfo (name, description)
+//   ProductPriceChangedEvent → skipped (TODO: fix event ให้มี VariantID ก่อน)
+//   ProductVariantAddedEvent → AddVariant (embed variant ใน doc)
+//   ProductDeletedEvent      → MarkDeleted
+//   StockAdjustedEvent       → UpdateVariantStock
 package command
 
 import (
@@ -24,6 +43,10 @@ func NewCatalogCommandService(writeRepo repo.CatalogWriteRepository, inboxRepo r
 	}
 }
 
+// isProcessed ตรวจสอบ Inbox/Idempotency: ถ้า messageID นี้ถูก process ไปแล้วหรือยัง
+// WHY ต้องตรวจก่อนทุก event handler?
+//   - Kafka guarantee At-Least-Once delivery → message อาจถูกส่งซ้ำ (network retry, consumer rebalance)
+//   - ถ้าไม่ตรวจ → Upsert/Update ซ้ำ → MongoDB catalog doc อาจ corrupt
 func (s *catalogCommandService) isProcessed(ctx context.Context, messageID string) (bool, error) {
 	return s.inboxRepo.HasProcessed(ctx, messageID, consumerID)
 }
@@ -36,6 +59,10 @@ func (s *catalogCommandService) markProcessed(ctx context.Context, messageID str
 	})
 }
 
+// HandleProductCreated สร้าง catalog document ใหม่ใน MongoDB (เริ่มต้นด้วยข้อมูลพื้นฐาน)
+// WHY Upsert แทน Insert?
+//   - Idempotent: ถ้า retry แล้ว doc เดิมมีอยู่ → overwrite แทนที่จะ error
+// HOW: Variants และ Categories เริ่มต้นเป็น empty slice → embed เพิ่มเติมเมื่อมี event ถัดมา
 func (s *catalogCommandService) HandleProductCreated(ctx context.Context, messageID string, evt *events.ProductCreatedEvent) error {
 	processed, err := s.isProcessed(ctx, messageID)
 	if err != nil {
@@ -97,6 +124,8 @@ func (s *catalogCommandService) HandleProductPriceChanged(ctx context.Context, m
 	return s.markProcessed(ctx, messageID)
 }
 
+// HandleProductVariantAdded embed variant เข้าไปใน catalog document
+// HOW: event.Attributes ([]Key/Value) → domain.VariantAttribute → EmbeddedVariant → writeRepo.AddVariant
 func (s *catalogCommandService) HandleProductVariantAdded(ctx context.Context, messageID string, evt *events.ProductVariantAddedEvent) error {
 	processed, err := s.isProcessed(ctx, messageID)
 	if err != nil {

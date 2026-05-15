@@ -1,3 +1,11 @@
+// WHAT: CatalogQueryService — read side ของ catalog_service (CQRS)
+//
+// WHY อ่านจาก MongoDB แทน PostgreSQL ของ product_service?
+//   - catalog document ถูก denormalized ไว้ (product + variants + categories ใน doc เดียว)
+//   - full-text search และ filter ทำได้เร็วกว่า JOIN หลาย table ใน PostgreSQL
+//   - product_service sync มาผ่าน Kafka event → Eventually Consistent
+//
+// GetVariantInfo ใช้โดย cart_service เพื่อดึงชื่อ/ราคา/รูปสินค้า ณ เวลา checkout
 package query
 
 import (
@@ -18,6 +26,9 @@ func NewCatalogQueryService(readRepo repo.CatalogReadRepository) serviceport.Cat
 }
 
 func (s *catalogQueryService) SearchProducts(ctx context.Context, req *dto.SearchProductsReq) (*dto.ProductListRes, error) {
+	// WHY ตั้งค่า default ใน Service Layer?
+	//   - Handler เป็น thin layer: ไม่ต้องรู้ business default เรื่อง pagination
+	//   - limit > 100: ป้องกัน DoS-like (ลูกค้าส่ง limit=999999 แล้ว MongoDB query จำนวนมาก)
 	page := req.Page
 	if page < 1 {
 		page = 1
@@ -69,6 +80,36 @@ func (s *catalogQueryService) GetProductByID(ctx context.Context, productID uint
 	return &res, nil
 }
 
+// GetVariantInfo ดึงข้อมูลสั้น สำหรับแสดงใน cart (ชื่อสินค้า, ราคา, รูป)
+// HOW: ค้น product doc จาก MongoDB ด้วย variantID → find variant ใน embedded array
+func (s *catalogQueryService) GetVariantInfo(ctx context.Context, variantID uint) (*dto.VariantInfoRes, error) {
+	product, variant, err := s.readRepo.FindByVariantID(ctx, variantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// imageURL priority:
+	//   1. variant.ImageURLs[0] — รูปเฉพาะของ variant นี้
+	//   2. product.ImageURLs[0] — fallback ไปรูปหลักของ product
+	//   3. "" — ถ้าไม่มีรูปเลย (cart ต้องได้รูปเสมอ)
+	imageURL := ""
+	if len(variant.ImageURLs) > 0 {
+		imageURL = variant.ImageURLs[0]
+	} else if len(product.ImageURLs) > 0 {
+		imageURL = product.ImageURLs[0]
+	}
+
+	return &dto.VariantInfoRes{
+		VariantID:   variant.VariantID,
+		ProductID:   product.ProductID,
+		ProductName: product.Name,
+		VariantName: variant.Name,
+		Price:       variant.Price,
+		ImageURL:    imageURL,
+		ImageURLs:   variant.ImageURLs,
+	}, nil
+}
+
 func toProductRes(p domain.CatalogProduct) dto.CatalogProductRes {
 	categories := make([]dto.CatalogCategoryRes, len(p.Categories))
 	for i, c := range p.Categories {
@@ -92,6 +133,7 @@ func toProductRes(p domain.CatalogProduct) dto.CatalogProductRes {
 			Price:      v.Price,
 			Stock:      v.Stock,
 			IsActive:   v.IsActive,
+			ImageURLs:  v.ImageURLs,
 			Attributes: attrs,
 		}
 	}

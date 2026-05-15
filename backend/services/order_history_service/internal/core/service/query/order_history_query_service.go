@@ -1,3 +1,14 @@
+// WHAT: OrderHistoryQueryService — read side ของ order_history_service (CQRS)
+//
+// WHY แยกออกมาจาก order_service?
+//   - order_service write ลง PostgreSQL (strong consistency)
+//   - order_history_service read จาก MongoDB (denormalized document, fast reads)
+//   - ทั้งสองใช้ OrderID เดียวกัน แต่ sync กันผ่าน Kafka event (Eventually Consistent)
+//
+// Data flow:
+//   order_service → [OrderCreated/Confirmed/Cancelled event] → Kafka
+//   → orderHistoryCommandService.Handle* → MongoDB upsert
+//   → orderHistoryQueryService อ่านจาก MongoDB → return to client
 package query
 
 import (
@@ -26,6 +37,10 @@ func (s *orderHistoryQueryService) GetOrderByID(ctx context.Context, orderID str
 		return nil, err
 	}
 
+	// WHY ownership check หลัง load (ไม่ใช้ WHERE id=? AND customer_id=?)?
+	//   - ถ้าไม่เจอเพราะ ownership fail → return 401 Unauthorized (ไม่ใช่ 404)
+	//   - ป้องกัน information leakage: client ไม่รู้ว่า orderID นั้นมีอยู่หรือเปล่า
+	//   - 403/401 vs 404: ถ้า return 404 เมื่อ ownership ไม่ผ่าน = leak ว่า order นั้นมีอยู่จริง
 	if order.CustomerID != customerID {
 		return nil, errs.NewUnauthorizedError("unauthorized: you do not own this order")
 	}
@@ -35,6 +50,9 @@ func (s *orderHistoryQueryService) GetOrderByID(ctx context.Context, orderID str
 }
 
 func (s *orderHistoryQueryService) ListMyOrders(ctx context.Context, customerID uint, req *dto.ListOrderHistoryReq) (*dto.OrderHistoryListRes, error) {
+	// WHY ตั้งค่า default ใน Service แทนให้เป็น zero value?
+	//   - ควบคุม business default logic ไว้ใน Core Layer → thin handler ไม่ต้องรู้
+	//   - limit > 100: ป้องกัน DoS-like (ลูกค้าส่ง limit=999999)
 	page := req.Page
 	if page < 1 {
 		page = 1
@@ -75,6 +93,9 @@ func (s *orderHistoryQueryService) ListMyOrders(ctx context.Context, customerID 
 	}, nil
 }
 
+// toOrderHistoryRes แปลง Domain Object → Response DTO
+// Subtotal คำนวณ ณ เวลา response (ไม่ได้เก็บใน MongoDB)
+//   Subtotal = UnitPrice × Quantity  ← ราคา ณ เวลาที่สั่งซื้อ (snapshot ไม่เปลี่ยนตามราคาปัจจุบัน)
 func toOrderHistoryRes(o domain.OrderHistory) dto.OrderHistoryRes {
 	items := make([]dto.OrderHistoryItemRes, len(o.Items))
 	for i, item := range o.Items {

@@ -47,16 +47,22 @@ func (a *adminService) RegisterAdmin(ctx context.Context, newAdminReq *dto.Creat
 }
 
 // TODO: implement UpdateProfile — อัปเดต profile admin
+// WHY ยังไม่ implement: ในระบบนี้ admin ถูกจัดการผ่าน DB management โดยตรง
+// HOW เมื่อ implement: Load-Modify-Save (FindByID → set fields → Save) + auth check
 func (a *adminService) UpdateProfile(ctx context.Context, adminID uint, adminUpdateReq *dto.UpdateAdminRequest) (*dto.AdminResponse, error) {
 	return nil, nil
 }
 
 // TODO: implement ChangePassword — เปลี่ยน password admin
+// WHY ยังไม่ implement: อยู่ระหว่าง features ที่จะ develop เพิ่ม
+// HOW เมื่อ implement: verify oldPassword → hash newPassword → update DB 
+//   (ต่างจาก user flow: admin ไม่มี email verify step)
 func (a *adminService) ChangePassword(ctx context.Context, adminID uint, oldPassword, newPassword string) error {
 	return nil
 }
 
 // TODO: implement GetProfile — ดึงโปรไฟล์ admin
+// HOW เมื่อ implement: FindByID → map → AdminResponse
 func (a *adminService) GetProfile(ctx context.Context, id uint) (*dto.AdminResponse, error) {
 	return nil, nil
 }

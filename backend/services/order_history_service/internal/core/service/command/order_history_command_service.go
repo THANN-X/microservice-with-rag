@@ -1,3 +1,17 @@
+// WHAT: OrderHistoryCommandService — event consumer ที่ sync order state ลง MongoDB (write side)
+//
+// WHY ต้องมี service นี้?
+//   - CQRS: write path (order_service → PostgreSQL) แยกจาก read path (order_history → MongoDB)
+//   - MongoDB denormalized → ดึงประวัติ order ได้เร็วกว่า JOIN หลาย table ใน PostgreSQL
+//
+// Inbox Pattern: ทุก Handle* ตรวจ messageID ก่อน + mark processed หลัง
+//   - ป้องกัน duplicate เมื่อ Kafka ส่ง message ซ้ำ (At-Least-Once delivery guarantee)
+//   - consumerID = "order-history-service" (namespace ไม่ซ้ำกับ catalog-service หรือ consumer อื่น)
+//
+// Events ที่ handle:
+//   OrderCreatedEvent   → Upsert OrderHistory doc (status: "PENDING")
+//   OrderConfirmedEvent → UpdateStatus "CONFIRMED"
+//   OrderCancelledEvent → MarkCancelled + set cancel_reason
 package command
 
 import (
@@ -24,10 +38,16 @@ func NewOrderHistoryCommandService(writeRepo repo.OrderHistoryWriteRepository, i
 	}
 }
 
+// isProcessed ตรวจสอบว่า message นี้ถูก process ไปแล้วหรือยัง (Inbox/Idempotency check)
+// WHY ต้องตรวจก่อนทุก event handler?
+//   - Kafka guarantee At-Least-Once delivery → message อาจถูกส่งซ้ำ (network retry, consumer rebalance)
+//   - ถ้าไม่ตรวจ → Upsert/UpdateStatus ซ้ำ → MongoDB doc อาจ overwrite ข้อมูลที่ถูกต้อง
 func (s *orderHistoryCommandService) isProcessed(ctx context.Context, messageID string) (bool, error) {
 	return s.inboxRepo.HasProcessed(ctx, messageID, consumerID)
 }
 
+// markProcessed บันทึกว่า message นี้ถูก process เรียบร้อยแล้ว
+// HOW: insert inbox_messages row → ถ้า DB transaction fail → row ไม่ถูก commit → process ใหม่ได้
 func (s *orderHistoryCommandService) markProcessed(ctx context.Context, messageID string) error {
 	return s.inboxRepo.MarkProcessed(ctx, &domain.InboxMessage{
 		ID:          messageID,
@@ -36,6 +56,16 @@ func (s *orderHistoryCommandService) markProcessed(ctx context.Context, messageI
 	})
 }
 
+// HandleOrderCreated สร้าง OrderHistory document ใหม่ใน MongoDB
+// HOW: event → domain mapping → Upsert (ไม่ใช้ Insert เพื่อ idempotency ในกรณี retry)
+// Event → Domain field mapping:
+//   evt.OrderID            → order.OrderID
+//   evt.CustomerID         → order.CustomerID
+//   evt.TotalAmount        → order.TotalAmount
+//   evt.Items[].VariantID  → order.Items[].VariantID
+//   evt.Items[].UnitPrice  → order.Items[].UnitPrice (snapshot ราคาตอนซื้อ)
+//   evt.ShippingAddress    → order.ShippingAddress (embedded struct)
+//   (status ตั้งเป็น "PENDING" เสมอ ไม่ใช้ค่าจาก event)
 func (s *orderHistoryCommandService) HandleOrderCreated(ctx context.Context, messageID string, evt *events.OrderCreatedEvent) error {
 	processed, err := s.isProcessed(ctx, messageID)
 	if err != nil {
