@@ -49,6 +49,15 @@ func (s *orderHistoryQueryService) GetOrderByID(ctx context.Context, orderID str
 	return &res, nil
 }
 
+func (s *orderHistoryQueryService) GetAdminOrderByID(ctx context.Context, orderID string) (*dto.OrderHistoryRes, error) {
+	order, err := s.readRepo.FindByOrderID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	res := toOrderHistoryRes(*order)
+	return &res, nil
+}
+
 func (s *orderHistoryQueryService) ListMyOrders(ctx context.Context, customerID uint, req *dto.ListOrderHistoryReq) (*dto.OrderHistoryListRes, error) {
 	// WHY ตั้งค่า default ใน Service แทนให้เป็น zero value?
 	//   - ควบคุม business default logic ไว้ใน Core Layer → thin handler ไม่ต้องรู้
@@ -93,8 +102,58 @@ func (s *orderHistoryQueryService) ListMyOrders(ctx context.Context, customerID 
 	}, nil
 }
 
-// toOrderHistoryRes แปลง Domain Object → Response DTO
-// Subtotal คำนวณ ณ เวลา response (ไม่ได้เก็บใน MongoDB)
+func (s *orderHistoryQueryService) ListAllOrders(ctx context.Context, req *dto.ListOrderHistoryReq) (*dto.OrderHistoryListRes, error) {
+	page := req.Page
+	if page < 1 {
+		page = 1
+	}
+	limit := req.Limit
+	if limit < 1 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	filter := domain.OrderHistoryAdminFilter{
+		Page:   page,
+		Limit:  limit,
+		Status: req.Status,
+	}
+
+	orders, total, err := s.readRepo.FindAll(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]dto.OrderHistoryRes, len(orders))
+	for i, o := range orders {
+		items[i] = toOrderHistoryRes(o)
+	}
+
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	return &dto.OrderHistoryListRes{
+		Items:      items,
+		Total:      total,
+		Page:       page,
+		PageSize:   limit,
+		TotalPages: totalPages,
+	}, nil
+}
+
+func (s *orderHistoryQueryService) GetAdminStats(ctx context.Context) (*dto.AdminStatsRes, error) {
+	totalOrders, totalRevenue, err := s.readRepo.SumRevenue(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.AdminStatsRes{
+		TotalOrders:  totalOrders,
+		TotalRevenue: totalRevenue,
+	}, nil
+}
+
+// toOrderHistoryRes แปลง Domain Object → Response DTO// Subtotal คำนวณ ณ เวลา response (ไม่ได้เก็บใน MongoDB)
 //   Subtotal = UnitPrice × Quantity  ← ราคา ณ เวลาที่สั่งซื้อ (snapshot ไม่เปลี่ยนตามราคาปัจจุบัน)
 func toOrderHistoryRes(o domain.OrderHistory) dto.OrderHistoryRes {
 	items := make([]dto.OrderHistoryItemRes, len(o.Items))

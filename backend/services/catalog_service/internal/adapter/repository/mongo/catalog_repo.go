@@ -269,6 +269,31 @@ func (r *catalogRepository) FindByProductID(ctx context.Context, productID uint)
 	return toDomain(&doc), nil
 }
 
+func (r *catalogRepository) FindByVariantID(ctx context.Context, variantID uint) (*domain.CatalogProduct, *domain.EmbeddedVariant, error) {
+	filter := bson.M{
+		"is_deleted": false,
+		"variants":   bson.M{"$elemMatch": bson.M{"variant_id": variantID}},
+	}
+
+	var doc catalogDocument
+	if err := r.col.FindOne(ctx, filter).Decode(&doc); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, nil, errs.NewNotFoundError("variant not found")
+		}
+		return nil, nil, err
+	}
+
+	product := toDomain(&doc)
+	for i := range product.Variants {
+		if product.Variants[i].VariantID == variantID {
+			v := product.Variants[i]
+			return product, &v, nil
+		}
+	}
+
+	return nil, nil, errs.NewNotFoundError("variant not found")
+}
+
 func (r *catalogRepository) FindAll(ctx context.Context, filter domain.ProductFilter) ([]domain.CatalogProduct, int64, error) {
 	page := filter.Page
 	if page < 1 {

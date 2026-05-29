@@ -16,5 +16,8 @@ type OrderHistoryCommandService interface {
 // OrderHistoryQueryService — Read Side ให้ user ดูประวัติ order
 type OrderHistoryQueryService interface {
 	GetOrderByID(ctx context.Context, orderID string, customerID uint) (*dto.OrderHistoryRes, error)
+	GetAdminOrderByID(ctx context.Context, orderID string) (*dto.OrderHistoryRes, error)
 	ListMyOrders(ctx context.Context, customerID uint, req *dto.ListOrderHistoryReq) (*dto.OrderHistoryListRes, error)
+	ListAllOrders(ctx context.Context, req *dto.ListOrderHistoryReq) (*dto.OrderHistoryListRes, error)
+	GetAdminStats(ctx context.Context) (*dto.AdminStatsRes, error)
 }

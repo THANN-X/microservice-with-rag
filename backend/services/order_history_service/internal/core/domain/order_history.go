@@ -41,6 +41,13 @@ type OrderHistoryFilter struct {
 	Status     string
 }
 
+// OrderHistoryAdminFilter ใช้สำหรับ admin query ทุก order (ไม่ filter ตาม customerID)
+type OrderHistoryAdminFilter struct {
+	Page   int
+	Limit  int
+	Status string
+}
+
 // InboxMessage ใช้เก็บ messageID ที่ consume แล้วเพื่อ enforce idempotency
 type InboxMessage struct {
 	ID          string

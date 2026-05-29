@@ -96,6 +96,9 @@ func main() {
 
 	// order-history routes — BFF validate JWT แล้ว ส่ง X-User-ID/X-Role มา
 	history := app.Group("/order-history", authmiddleware.InternalAuthMiddleware())
+	history.Get("/admin/stats", handler.GetAdminStats)         // ต้องอยู่ก่อน /admin/:orderId เพื่อไม่ถูก capture
+	history.Get("/admin", handler.ListAllOrders)               // ต้องอยู่ก่อน /:orderId เพื่อไม่ให้ถูก capture
+	history.Get("/admin/:orderId", handler.GetAdminOrder)      // admin get single order (ไม่ check ownership)
 	history.Get("/", handler.ListMyOrders)
 	history.Get("/:orderId", handler.GetOrder)
 

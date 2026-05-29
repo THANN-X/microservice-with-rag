@@ -14,22 +14,24 @@ type CreateProductReq struct {
 }
 
 type CreateVariantReq struct {
-	Sku   string  `json:"sku" validate:"required"`
-	Name  string  `json:"name" validate:"required"`
-	Price float64 `json:"price" validate:"gt=0"`
-	Stock int     `json:"stock" validate:"gt=0"`
+	Sku       string   `json:"sku" validate:"required"`
+	Name      string   `json:"name" validate:"required"`
+	Price     float64  `json:"price" validate:"gt=0"`
+	Stock     int      `json:"stock" validate:"gt=0"`
+	ImageURLs []string `json:"image_urls" validate:"omitempty,dive,url"`
 	// e.g. [101, 205] (101=Red, 205=XL)
 	AttributeValueIDs []uint `json:"attribute_value_ids" validate:"required,min=1"`
 }
 
 // New: Request สำหรับเพิ่ม Variant ใหม่ในสินค้าเดิม
 type AddVariantReq struct {
-	ProductID         uint    `json:"product_id" validate:"required"`
-	Sku               string  `json:"sku" validate:"required"`
-	Name              string  `json:"name" validate:"required"` // e.g. "Red / XL"
-	Price             float64 `json:"price" validate:"gt=0"`
-	Stock             int     `json:"stock" validate:"gt=0"`
-	AttributeValueIDs []uint  `json:"attribute_value_ids" validate:"required,min=1"`
+	ProductID         uint     `json:"product_id" validate:"required"`
+	Sku               string   `json:"sku" validate:"required"`
+	Name              string   `json:"name" validate:"required"` // e.g. "Red / XL"
+	Price             float64  `json:"price" validate:"gt=0"`
+	Stock             int      `json:"stock" validate:"gt=0"`
+	ImageURLs         []string `json:"image_urls" validate:"omitempty,dive,url"`
+	AttributeValueIDs []uint   `json:"attribute_value_ids" validate:"required,min=1"`
 }
 
 // New: Request สำหรับ Admin ปรับสต็อก (Stock Take / ของเสีย)

@@ -8,7 +8,7 @@ type CategoryRes struct {
 	Slug        string        `json:"slug"`
 	Description string        `json:"description"`
 	IsActive    bool          `json:"is_active"`
-	ParentID    *uint         `json:"parent_id,omitempty"`
+	ParentID    *uint         `json:"parent_id"`
 	Children    []CategoryRes `json:"children,omitempty"`
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`

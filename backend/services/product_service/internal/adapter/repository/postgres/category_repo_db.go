@@ -31,6 +31,14 @@ func (r *categoryRepository) CreateCategory(ctx context.Context, category *domai
 	}
 	// Sync กลับ ID และ Timestamp ที่ DB generate มาให้ Domain Object
 	// เพื่อให้ caller (Service Layer) รู้ว่า record ถูก save ด้วย ID อะไร
+	//
+	// domain.Category ก่อน Create:     หลัง sync กลับ:
+	//   ID        = 0                    ID        = 5  ← auto-increment จาก DB
+	//   Name      = "Electronics"        Name      = "Electronics"
+	//   ParentID  = nil                  ParentID  = nil
+	//   IsActive  = true                 IsActive  = true
+	//   CreatedAt = zero                 CreatedAt = 2026-05-15T10:00:00Z
+	//   UpdatedAt = zero                 UpdatedAt = 2026-05-15T10:00:00Z
 	category.ID = e.ID
 	category.CreatedAt = e.CreatedAt
 	category.UpdatedAt = e.UpdatedAt
@@ -45,14 +53,49 @@ func (r *categoryRepository) UpdateCategory(ctx context.Context, category *domai
 }
 
 func (r *categoryRepository) DeleteCategory(ctx context.Context, id uint) error {
-	// GORM Soft Delete: CategoryEntity มี gorm.Model ซึ่งมี DeletedAt field
-	// ดังนั้น Delete นี้จะ set deleted_at = NOW() ไม่ได้ลบจริง
-	return r.db.WithContext(ctx).Delete(&entity.CategoryEntity{}, id).Error
+	// ใช้ Recursive CTE เพื่อหา ID ของ category นั้นและ descendant ทั้งหมด (ลึกกี่ระดับก็ได้)
+	// แล้ว Soft-delete ทุก ID ใน transaction เดียว เพื่อไม่ให้มี orphan records
+	//
+	// ตัวอย่าง tree ใน DB:
+	//   Electronics (id=1)
+	//   └─ Phones (id=2)
+	//      └─ Smartphones (id=3)
+	//
+	// DeleteCategory(1) → CTE scan → ids = [1, 2, 3]
+	//                  → Soft-delete ทั้ง 3 records ใน transaction เดียว
+	//                  → deleted_at ถูก set, ไม่มี orphan children เหลือ
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var ids []uint
+		err := tx.Raw(`
+			WITH RECURSIVE descendants AS (
+				SELECT id FROM category_entities WHERE id = ? AND deleted_at IS NULL
+				UNION ALL
+				SELECT c.id FROM category_entities c
+				INNER JOIN descendants d ON c.parent_id = d.id
+				WHERE c.deleted_at IS NULL
+			)
+			SELECT id FROM descendants
+		`, id).Scan(&ids).Error
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		return tx.Where("id IN ?", ids).Delete(&entity.CategoryEntity{}).Error
+	})
 }
 
 func (r *categoryRepository) GetCategoryByID(ctx context.Context, id uint) (*domain.Category, error) {
 	var e entity.CategoryEntity
 
+	// Result shape (Preload 1 ระดับ):
+	//   Category{
+	//     ID: 1, Name: "Electronics", ParentID: nil, IsActive: true,
+	//     Children: [
+	//       { ID: 2, Name: "Phones", Children: nil },  ← Children ของ Children ไม่ถูก load
+	//     ]
+	//   }
 	err := r.db.WithContext(ctx).
 		// Preload Children 1 level สำหรับ GetByID (ใช้แสดง sub-categories ทันที)
 		Preload("Children").
@@ -95,6 +138,17 @@ func (r *categoryRepository) GetAllCategories(ctx context.Context) ([]domain.Cat
 	//   - BFS ใน Go ต้องใช้หลาย query (เหมือน getAllSubCategoryIDs ใน product repo)
 	//   - GORM Preload ทำ query แยกต่อหาก แต่ join ให้อัตโนมัติ อ่านง่ายกว่า
 	//   - 2 ระดับเพียงพอสำหรับ e-commerce ทั่วไป (Electronics > Phones > Smartphones)
+	//
+	// Result shape (Root → L1 → L2, หยุดที่ L2):
+	//   []Category{
+	//     { Name: "Electronics", Children: [
+	//         { Name: "Phones", Children: [
+	//             { Name: "Smartphones", Children: nil },  ← L3 ไม่ถูก Preload
+	//         ]},
+	//     ]},
+	//   }
+	//
+	// ข้อจำกัด: category ที่ลึกเกิน 3 ระดับ Children ของ L3 จะเป็น nil เสมอ
 	err := r.db.WithContext(ctx).
 		Where("parent_id IS NULL").
 		Preload("Children").

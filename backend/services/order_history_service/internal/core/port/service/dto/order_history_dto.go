@@ -43,3 +43,8 @@ type OrderHistoryListRes struct {
 	PageSize   int               `json:"page_size"`
 	TotalPages int               `json:"total_pages"`
 }
+
+type AdminStatsRes struct {
+	TotalOrders  int64   `json:"total_orders"`
+	TotalRevenue float64 `json:"total_revenue"`
+}

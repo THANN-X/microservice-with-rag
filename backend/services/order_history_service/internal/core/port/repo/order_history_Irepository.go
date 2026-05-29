@@ -16,4 +16,6 @@ type OrderHistoryWriteRepository interface {
 type OrderHistoryReadRepository interface {
 	FindByOrderID(ctx context.Context, orderID string) (*domain.OrderHistory, error)
 	FindByCustomerID(ctx context.Context, filter domain.OrderHistoryFilter) ([]domain.OrderHistory, int64, error)
+	FindAll(ctx context.Context, filter domain.OrderHistoryAdminFilter) ([]domain.OrderHistory, int64, error)
+	SumRevenue(ctx context.Context) (totalOrders int64, totalRevenue float64, err error)
 }

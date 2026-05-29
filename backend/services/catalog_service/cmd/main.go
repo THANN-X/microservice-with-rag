@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	kafkaTopic     = "product.events"
-	consumerGroup  = "catalog-service-group"
-	defaultPort    = "3005"
+	kafkaTopic    = "product.events"
+	consumerGroup = "catalog-service-group"
+	defaultPort   = "3005"
 )
 
 func main() {
@@ -94,6 +94,7 @@ func main() {
 	catalog := app.Group("/catalog")
 	catalog.Get("/products", handler.SearchProducts)
 	catalog.Get("/products/:productId", handler.GetProduct)
+	catalog.Get("/variants/:variantId", handler.GetVariantInfo)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

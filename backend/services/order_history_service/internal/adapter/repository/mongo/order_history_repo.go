@@ -209,6 +209,80 @@ func (r *orderHistoryRepository) FindByCustomerID(ctx context.Context, filter do
 	return orders, total, nil
 }
 
+// FindAll โหลด orders ทั้งหมดสำหรับ admin (ไม่ filter ตาม customerID)
+func (r *orderHistoryRepository) FindAll(ctx context.Context, filter domain.OrderHistoryAdminFilter) ([]domain.OrderHistory, int64, error) {
+	page := filter.Page
+	if page < 1 {
+		page = 1
+	}
+	limit := filter.Limit
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+
+	query := bson.M{}
+	if filter.Status != "" {
+		query["status"] = filter.Status
+	}
+
+	total, err := r.col.CountDocuments(ctx, query)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	findOpts := options.Find().
+		SetSkip(int64((page - 1) * limit)).
+		SetLimit(int64(limit)).
+		SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+	cursor, err := r.col.Find(ctx, query, findOpts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var docs []orderHistoryDocument
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, 0, err
+	}
+
+	orders := make([]domain.OrderHistory, len(docs))
+	for i, d := range docs {
+		orders[i] = *toDomain(&d)
+	}
+
+	return orders, total, nil
+}
+
+// SumRevenue คืนค่า total orders ทั้งหมด และ total revenue (ผลรวม total_amount ทุก order) ผ่าน MongoDB aggregation
+func (r *orderHistoryRepository) SumRevenue(ctx context.Context) (int64, float64, error) {
+	pipeline := mongo.Pipeline{
+		{{Key: "$group", Value: bson.M{
+			"_id":           nil,
+			"total_orders":  bson.M{"$sum": 1},
+			"total_revenue": bson.M{"$sum": "$total_amount"},
+		}}},
+	}
+
+	cursor, err := r.col.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var result struct {
+		TotalOrders  int64   `bson:"total_orders"`
+		TotalRevenue float64 `bson:"total_revenue"`
+	}
+	if cursor.Next(ctx) {
+		if err := cursor.Decode(&result); err != nil {
+			return 0, 0, err
+		}
+	}
+
+	return result.TotalOrders, result.TotalRevenue, nil
+}
+
 // --- Internal converters ---
 
 func toItemDocs(items []domain.OrderHistoryItem) []itemDoc {

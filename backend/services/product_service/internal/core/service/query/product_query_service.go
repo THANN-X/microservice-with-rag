@@ -83,6 +83,16 @@ func (s *productQueryService) ListProducts(ctx context.Context, req *dto.ListPro
 	// Total pages = ceil(total / limit)
 	totalPages := int(math.Ceil(float64(total) / float64(filter.Limit)))
 
+	// Result shape:
+	//   ProductListRes{
+	//     Items:      []ProductRes  ← สินค้าในหน้านี้
+	//     Total:      int64         ← จำนวนทั้งหมดที่ตรงกับ filter (ไม่ใช่แค่หน้านี้)
+	//     Page:       int           ← หน้าปัจจุบัน (เริ่มที่ 1)
+	//     PageSize:   int           ← จำนวนต่อหน้าที่ใช้จริง
+	//     TotalPages: int           ← ceil(Total / PageSize)
+	//   }
+	// ตัวอย่าง: Total=25, Page=2, PageSize=10 → TotalPages=3, Items มี 10 รายการ
+
 	return &dto.ProductListRes{
 		Items:      items,
 		Total:      total,

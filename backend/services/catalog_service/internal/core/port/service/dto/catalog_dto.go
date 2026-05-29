@@ -26,12 +26,13 @@ type CatalogCategoryRes struct {
 }
 
 type CatalogVariantRes struct {
-	VariantID  uint                 `json:"variant_id"`
-	Sku        string               `json:"sku"`
-	Name       string               `json:"name"`
-	Price      float64              `json:"price"`
-	Stock      int                  `json:"stock"`
-	IsActive   bool                 `json:"is_active"`
+	VariantID  uint                  `json:"variant_id"`
+	Sku        string                `json:"sku"`
+	Name       string                `json:"name"`
+	Price      float64               `json:"price"`
+	Stock      int                   `json:"stock"`
+	IsActive   bool                  `json:"is_active"`
+	ImageURLs  []string              `json:"image_urls"`
 	Attributes []VariantAttributeRes `json:"attributes"`
 }
 
@@ -46,4 +47,14 @@ type ProductListRes struct {
 	Page       int                 `json:"page"`
 	PageSize   int                 `json:"page_size"`
 	TotalPages int                 `json:"total_pages"`
+}
+
+type VariantInfoRes struct {
+	VariantID   uint     `json:"variant_id"`
+	ProductID   uint     `json:"product_id"`
+	ProductName string   `json:"product_name"`
+	VariantName string   `json:"variant_name"`
+	Price       float64  `json:"price"`
+	ImageURL    string   `json:"image_url,omitempty"`
+	ImageURLs   []string `json:"image_urls,omitempty"`
 }

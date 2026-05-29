@@ -73,3 +73,28 @@ func (h *catalogHandler) GetProduct(c *fiber.Ctx) error {
 
 	return c.JSON(result)
 }
+
+// GetVariantInfo godoc
+// @Summary     Get variant info for cart enrichment
+// @Description ดึงข้อมูล variant แบบ flat (product_name, variant_name, price, image) ตาม variant ID
+// @Tags        catalog
+// @Produce     json
+// @Param       variantId path int true "Variant ID"
+// @Success     200 {object} dto.VariantInfoRes
+// @Failure     400 {object} map[string]string
+// @Failure     404 {object} map[string]string
+// @Router      /catalog/variants/{variantId} [get]
+func (h *catalogHandler) GetVariantInfo(c *fiber.Ctx) error {
+	idStr := c.Params("variantId")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid variant id"})
+	}
+
+	result, err := h.queryService.GetVariantInfo(c.UserContext(), uint(id))
+	if err != nil {
+		return httpcore.HandleError(c, err)
+	}
+
+	return c.JSON(result)
+}

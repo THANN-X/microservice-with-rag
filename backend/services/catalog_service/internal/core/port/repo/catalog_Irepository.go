@@ -38,6 +38,9 @@ type CatalogReadRepository interface {
 	// FindByProductID คืน product ที่ยังไม่ถูกลบตาม product source ID
 	FindByProductID(ctx context.Context, productID uint) (*domain.CatalogProduct, error)
 
+	// FindByVariantID คืน product และ variant ตาม variant ID
+	FindByVariantID(ctx context.Context, variantID uint) (*domain.CatalogProduct, *domain.EmbeddedVariant, error)
+
 	// FindAll คืนรายการ product แบบ paginated ตาม filter
 	FindAll(ctx context.Context, filter domain.ProductFilter) ([]domain.CatalogProduct, int64, error)
 }

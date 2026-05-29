@@ -26,4 +26,7 @@ type CatalogQueryService interface {
 
 	// GetProductByID ดึงข้อมูลสินค้าเดียวตาม source product ID
 	GetProductByID(ctx context.Context, productID uint) (*dto.CatalogProductRes, error)
+
+	// GetVariantInfo ดึงข้อมูล variant แบบ flat สำหรับ API composition
+	GetVariantInfo(ctx context.Context, variantID uint) (*dto.VariantInfoRes, error)
 }

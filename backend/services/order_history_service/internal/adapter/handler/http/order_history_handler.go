@@ -4,8 +4,9 @@ import (
 	serviceport "order_history_service/internal/core/port/service"
 	"order_history_service/internal/core/port/service/dto"
 
-	"github.com/gofiber/fiber/v2"
 	"httpcore"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 type orderHistoryHandler struct {
@@ -63,6 +64,80 @@ func (h *orderHistoryHandler) GetOrder(c *fiber.Ctx) error {
 	}
 
 	result, err := h.queryService.GetOrderByID(c.UserContext(), orderID, customerID)
+	if err != nil {
+		return httpcore.HandleError(c, err)
+	}
+
+	return c.JSON(result)
+}
+
+// ListAllOrders godoc
+// @Summary     List all orders (Admin only)
+// @Tags        order-history
+// @Produce     json
+// @Param       page   query int    false "Page number (default: 1)"
+// @Param       limit  query int    false "Items per page (default: 10, max: 100)"
+// @Param       status query string false "Filter by status"
+// @Success     200 {object} dto.OrderHistoryListRes
+// @Router      /order-history/admin [get]
+func (h *orderHistoryHandler) ListAllOrders(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden: admins only"})
+	}
+
+	req := &dto.ListOrderHistoryReq{}
+	if err := c.QueryParser(req); err != nil {
+		return httpcore.HandleError(c, err)
+	}
+
+	result, err := h.queryService.ListAllOrders(c.UserContext(), req)
+	if err != nil {
+		return httpcore.HandleError(c, err)
+	}
+
+	return c.JSON(result)
+}
+
+// GetAdminOrder godoc
+// @Summary     Get a single order by ID (Admin only)
+// @Tags        order-history
+// @Produce     json
+// @Param       orderId path string true "Order ID (UUID)"
+// @Success     200 {object} dto.OrderHistoryRes
+// @Router      /order-history/admin/{orderId} [get]
+func (h *orderHistoryHandler) GetAdminOrder(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden: admins only"})
+	}
+
+	orderID := c.Params("orderId")
+	if orderID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "order id is required"})
+	}
+
+	result, err := h.queryService.GetAdminOrderByID(c.UserContext(), orderID)
+	if err != nil {
+		return httpcore.HandleError(c, err)
+	}
+
+	return c.JSON(result)
+}
+
+// GetAdminStats godoc
+// @Summary     Get admin dashboard stats (total orders + total revenue)
+// @Tags        order-history
+// @Produce     json
+// @Success     200 {object} dto.AdminStatsRes
+// @Router      /order-history/admin/stats [get]
+func (h *orderHistoryHandler) GetAdminStats(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden: admins only"})
+	}
+
+	result, err := h.queryService.GetAdminStats(c.UserContext())
 	if err != nil {
 		return httpcore.HandleError(c, err)
 	}

@@ -68,6 +68,7 @@ func ToDomain_Variants(reqVariants []dto.CreateVariantReq) []domain.ProductVaria
 			NameVariant: v.Name,
 			Price:       v.Price,
 			Stock:       v.Stock,
+			ImageURLs:   v.ImageURLs,
 			IsActive:    true,
 			Attributes:  attributes, // ใส่ Attributes ที่มีแค่ ID ลงไป
 		}

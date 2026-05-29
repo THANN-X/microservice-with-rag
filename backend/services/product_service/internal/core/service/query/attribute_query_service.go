@@ -40,8 +40,9 @@ func (s *attributeQueryService) GetAllAttributes(ctx context.Context) ([]dto.Att
 			return nil, errs.NewUnexpectedError()
 		}
 		res := dto.AttributeRes{
-			ID:   a.ID,
-			Name: a.Name,
+			ID:     a.ID,
+			Name:   a.Name,
+			Values: make([]dto.AttributeValueRes, 0),
 		}
 		for _, v := range values {
 			res.Values = append(res.Values, dto.AttributeValueRes{
@@ -72,8 +73,9 @@ func (s *attributeQueryService) GetAttributeByID(ctx context.Context, id uint) (
 	}
 
 	res := &dto.AttributeRes{
-		ID:   attr.ID,
-		Name: attr.Name,
+		ID:     attr.ID,
+		Name:   attr.Name,
+		Values: make([]dto.AttributeValueRes, 0),
 	}
 	for _, v := range values {
 		res.Values = append(res.Values, dto.AttributeValueRes{
