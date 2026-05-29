@@ -61,8 +61,16 @@ func (a *adminService) ChangePassword(ctx context.Context, adminID uint, oldPass
 	return nil
 }
 
-// TODO: implement GetProfile — ดึงโปรไฟล์ admin
-// HOW เมื่อ implement: FindByID → map → AdminResponse
+// What: ดึงโปรไฟล์ admin ด้วย ID — ใช้โดย authHandler.GetMe เมื่อ role == "admin"
 func (a *adminService) GetProfile(ctx context.Context, id uint) (*dto.AdminResponse, error) {
-	return nil, nil
+	admin, err := a.adminRepo.FindByID(ctx, id)
+	if err != nil {
+		logs.Error(err)
+		return nil, errs.NewUnexpectedError()
+	}
+	if admin == nil {
+		return nil, errs.NewNotFoundError("admin not found")
+	}
+
+	return dto.ToAdminResponse(admin), nil
 }

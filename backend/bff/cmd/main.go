@@ -139,8 +139,10 @@ func main() {
 
 	// What: Rate Limiter — จำกัดจำนวน request ต่อนาที
 	// Why:  ป้องกัน brute force / DDoS — centralize ที่ BFF แทนที่จะใส่ทุก service
+	// Note: 500/min เพราะ development mode มี OPTIONS preflight + retry + HMR request
+	//       ถ้าใช้ 100/min จะ trigger 429 เร็วมากขณะ dev
 	app.Use(limiter.New(limiter.Config{
-		Max:        100,
+		Max:        500,
 		Expiration: 1 * time.Minute,
 	}))
 

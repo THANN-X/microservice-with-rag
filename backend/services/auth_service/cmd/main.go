@@ -18,7 +18,8 @@ import (
 
 // What: Composition Root — จุดเดียวที่ wiring dependency ทั้งหมดเข้าด้วยกัน
 // Why:  ทำให้ inner layers (domain, service) ไม่รู้จัก framework ใด ๆ
-//       และง่ายต่อการ swap implementation ในอนาคต (เช่น เปลี่ยน DB หรือ HTTP framework)
+//
+//	และง่ายต่อการ swap implementation ในอนาคต (เช่น เปลี่ยน DB หรือ HTTP framework)
 func main() {
 	// What: โหลด config จาก environment variable แล้วเปิด connection ไปยัง Postgres
 	cfg := config.LoadConfig()
@@ -103,6 +104,9 @@ func main() {
 	authGroup.Post("/refresh-token", authHandler.RefreshToken)
 	// What: Google OAuth — รับ Google ID token แล้ว find-or-create user + ออก JWT
 	authGroup.Post("/google", authHandler.GoogleLogin)
+	// What: unified /auth/me — ทำงานได้กับทั้ง user และ admin token
+	// Why:  /users/me ดึงจาก user table เท่านั้น admin token หา user ไม่เจอ (404)
+	authGroup.Get("/me", internalAuth, authHandler.GetMe)
 
 	// --- Protected Routes (ต้องมี valid access_token) ---
 	// Why: ใช้ Group + Middleware เพื่อให้ทุก route ในกลุ่มถูก intercept โดย authMiddleware
@@ -110,9 +114,11 @@ func main() {
 
 	protected.Post("/update/:id", userHandler.UpdateProfile)
 	protected.Post("/chgpass/:id", userHandler.ChangePassword)
+
 	// Why: ต้องประกาศ /me ก่อน /:id เสมอ — Fiber จับ route แบบ first-match
 	//      ถ้าประกาศ /:id ก่อน คำว่า "me" จะถูกดักเป็น param แทน
-	protected.Get("/me", userHandler.GetMyProfile)
+	//protected.Get("/me", userHandler.GetMyProfile)
+
 	// What: ดึงโปรไฟล์ของ user ตาม ID (admin หรือเจ้าของเท่านั้น)
 	protected.Get("/:id", userHandler.GetProfile)
 

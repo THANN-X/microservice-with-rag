@@ -48,17 +48,17 @@ func (h *userHandler) GetProfile(c *fiber.Ctx) error {
 
 // What: ดึงโปรไฟล์ของตัวเอง — ID อ่านจาก JWT claims (ไม่ต้องส่ง ID ใน URL)
 // Why:  ป้องกัน user อ่าน profile คนอื่นโดยบิด ID ใน URL
-func (h *userHandler) GetMyProfile(c *fiber.Ctx) error {
-	// What: ดึง user_id จาก context ที่ authMiddleware inject ไว้
-	userID := c.Locals("user_id").(uint)
+// func (h *userHandler) GetMyProfile(c *fiber.Ctx) error {
+// 	// What: ดึง user_id จาก context ที่ authMiddleware inject ไว้
+// 	userID := c.Locals("user_id").(uint)
 
-	user, err := h.userSvc.GetProfile(c.Context(), uint(userID))
-	if err != nil {
-		return httpcore.HandleError(c, err)
-	}
+// 	user, err := h.userSvc.GetProfile(c.Context(), uint(userID))
+// 	if err != nil {
+// 		return httpcore.HandleError(c, err)
+// 	}
 
-	return c.Status(fiber.StatusOK).JSON(user)
-}
+// 	return c.Status(fiber.StatusOK).JSON(user)
+// }
 
 // What: สมัคร user ใหม่ — endpoint นี้เปิด public ไม่ต้อง login
 func (h *userHandler) RegisterUser(c *fiber.Ctx) error {

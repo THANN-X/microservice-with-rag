@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type TokenType string
@@ -50,6 +51,7 @@ func (j *JWTService) GenerateToken(userID uint, role string, tokenType TokenType
 		Role:   role,
 		Type:   tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uuid.New().String(), // jti — ป้องกัน duplicate token เมื่อ login พร้อมกันหลาย request
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiry)),
 			Issuer:    j.Issuer,
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

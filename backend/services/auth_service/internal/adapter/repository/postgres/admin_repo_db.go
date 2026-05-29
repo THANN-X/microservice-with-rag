@@ -73,9 +73,23 @@ func (r *adminRepositoryDB) DeleteAdmin(ctx context.Context, id uint) error {
 	return nil
 }
 
+// What: ค้นหา admin ด้วย ID — ใช้ตอนดึงโปรไฟล์ผ่าน JWT claims
+func (r *adminRepositoryDB) FindByID(ctx context.Context, id uint) (*domain.Admin, error) {
+	adminEntity := &entity.AdminEntity{}
+
+	result := r.db.WithContext(ctx).First(adminEntity, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+
+	return adminEntity.ToAdminDomain(), nil
+}
+
 // What: ค้นหา admin ด้วย username — ใช้ตอน admin login
 // Why:  คืน nil (ไม่ใช่ error) ถ้าไม่เจอ — ต่างจาก user repo ที่คืน domain error
-// TODO: อาจลองเปลี่ยนเป็น return domain.ErrAdminNotFound pattern เดียวกันกับ user repo เพื่อ consistency
 func (r *adminRepositoryDB) FindByUsername(ctx context.Context, username string) (*domain.Admin, error) {
 	adminEntity := &entity.AdminEntity{}
 

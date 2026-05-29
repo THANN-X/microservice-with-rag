@@ -15,6 +15,7 @@ type AdminRepository interface {
 	DeleteAdmin(ctx context.Context, id uint) error
 
 	// Retrieval
+	FindByID(ctx context.Context, id uint) (*domain.Admin, error)
 	FindByUsername(ctx context.Context, username string) (*domain.Admin, error)
 	// FindByEmail(ctx context.Context, email string) (*domain.Admin, error)
 }

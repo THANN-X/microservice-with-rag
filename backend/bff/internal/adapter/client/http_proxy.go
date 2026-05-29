@@ -76,6 +76,9 @@ func (p *ServiceProxy) Forward(c *fiber.Ctx, targetPath string) error {
 	// Why:  - Content-Type: backend ต้องรู้ว่า body เป็น JSON/form/etc. เพื่อ parse ถูก
 	//       - Authorization: forward ไปให้ auth-service สำหรับ refresh-token / logout
 	//       - X-Admin-Secret: ใช้สำหรับ admin registration endpoint โดยเฉพาะ
+	//       - Cookie: forward refresh_token (HttpOnly cookie) ไปยัง auth-service
+	//                 เพื่อรองรับ Approach B — refresh_token อยู่ใน HttpOnly cookie
+	//                 Next.js rewrite proxy ส่ง Cookie header มาให้ BFF แล้ว BFF ต้อง forward ต่อไป
 	if ct := string(c.Request().Header.ContentType()); ct != "" {
 		req.Header.Set("Content-Type", ct)
 	}
@@ -84,6 +87,9 @@ func (p *ServiceProxy) Forward(c *fiber.Ctx, targetPath string) error {
 	}
 	if secret := c.Get("X-Admin-Secret"); secret != "" {
 		req.Header.Set("X-Admin-Secret", secret)
+	}
+	if cookie := c.Get("Cookie"); cookie != "" {
+		req.Header.Set("Cookie", cookie)
 	}
 
 	// What: Forward user identity ที่ BFF validate แล้วไปยัง backend
@@ -117,7 +123,13 @@ func (p *ServiceProxy) Forward(c *fiber.Ctx, targetPath string) error {
 		})
 	}
 
-	// What: set Content-Type header ให้ตรงกับที่ backend ส่งมา (ปกติเป็น application/json)
+	// What: forward response headers จาก backend กลับไปยัง client
+	// Why:  - Content-Type: client ต้อง parse response body ให้ถูกต้อง
+	//       - Set-Cookie: forward HttpOnly refresh_token cookie ที่ auth-service set
+	//                     ไปยัง Next.js proxy เพื่อให้ browser เก็บ cookie ที่ localhost:3000
 	c.Set("Content-Type", resp.Header.Get("Content-Type"))
+	for _, sc := range resp.Header["Set-Cookie"] {
+		c.Response().Header.Add("Set-Cookie", sc)
+	}
 	return c.Status(resp.StatusCode).Send(body)
 }

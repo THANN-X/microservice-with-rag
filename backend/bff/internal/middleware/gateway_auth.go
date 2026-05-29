@@ -67,8 +67,11 @@ func GatewayAuth(jwtService *jwtutils.JWTService) fiber.Handler {
 
 // isPublicRoute ตรวจสอบว่า route นี้เป็น public หรือไม่
 func isPublicRoute(path, method string) bool {
-	// Auth: login, logout, refresh-token
-	if strings.HasPrefix(path, "/api/auth/auth/") {
+	// Auth: login, logout, refresh-token, google — เป็น public เพราะยังไม่มี token
+	// Why: /api/auth/auth/me ต้องการ JWT — ยกเว้นออกจาก public rule
+	//      ถ้าปล่อยผ่านโดยไม่ validate JWT → BFF ไม่ set X-User-ID/X-Role headers
+	//      → InternalAuthMiddleware ใน auth-service ไม่เจอ X-User-ID → 401 ทุกครั้ง
+	if strings.HasPrefix(path, "/api/auth/auth/") && path != "/api/auth/auth/me" {
 		return true
 	}
 	// Auth: user register
@@ -113,6 +116,7 @@ func isAdminRoute(path string) bool {
 		"/api/categories/admin",
 		"/api/attributes/admin",
 		"/api/orders/admin",
+		"/api/order-history/admin",
 	}
 	for _, prefix := range adminPrefixes {
 		if strings.HasPrefix(path, prefix) {
