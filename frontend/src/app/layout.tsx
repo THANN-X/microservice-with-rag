@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/auth-context";
 import { CartProvider } from "@/context/cart-context";
+import { ToastProvider } from "@/context/toast-context";
 import GoogleOAuthWrapper from "@/components/google-oauth-wrapper";
 
 export const metadata: Metadata = {
@@ -32,9 +33,11 @@ export default function RootLayout({
       <body className="min-h-screen bg-surface font-body text-on-surface antialiased">
         <GoogleOAuthWrapper>
           <AuthProvider>
-            <CartProvider>
-              {children}
-            </CartProvider>
+            <ToastProvider>
+              <CartProvider>
+                {children}
+              </CartProvider>
+            </ToastProvider>
           </AuthProvider>
         </GoogleOAuthWrapper>
       </body>

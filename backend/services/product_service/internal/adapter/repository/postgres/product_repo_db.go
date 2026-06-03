@@ -134,6 +134,15 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 }
 
 func (r *productRepository) DeleteProduct(ctx context.Context, product *domain.Product) error {
+	// Soft delete ทุก Variant ของ product นี้ก่อน
+	// WHY ต้องทำแยก?
+	//   - GORM soft delete (UpdateColumn deleted_at) ไม่ได้ cascade ลงไปที่ child rows อัตโนมัติ
+	//   - constraint OnDelete:CASCADE จะทำงานก็ต่อเมื่อเป็น hard delete เท่านั้น
+	//   - soft delete ต้องจัดการ cascade เองใน application layer
+	if err := r.GetDB(ctx).Where("product_id = ?", product.ID).Delete(&entity.ProductVariantEntity{}).Error; err != nil {
+		return err
+	}
+
 	result := r.GetDB(ctx).Delete(&entity.ProductEntity{}, product.ID)
 	if result.Error != nil {
 		return result.Error

@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { GoogleLogin } from "@react-oauth/google";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/";
   const { login, loginWithGoogle } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +23,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      router.push("/");
+      router.push(callbackUrl);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "เข้าสู่ระบบไม่สำเร็จ");
     } finally {
@@ -34,7 +36,7 @@ export default function LoginPage() {
     setError("");
     try {
       await loginWithGoogle(credential);
-      router.push("/");
+      router.push(callbackUrl);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "เข้าสู่ระบบด้วย Google ไม่สำเร็จ");
     } finally {
@@ -189,5 +191,13 @@ export default function LoginPage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen content-center text-center">กำลังโหลด...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

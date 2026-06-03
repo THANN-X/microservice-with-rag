@@ -12,6 +12,7 @@ import {
 import { cn, formatBaht } from "@/lib/utils";
 import { adminOrderHistoryService, adminOrderService } from "@/lib/services";
 import type { OrderHistory } from "@/lib/types";
+import { APP_CONFIG } from "@/lib/constants";
 
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   PENDING: { label: "รอดำเนินการ", cls: "bg-amber-50 text-amber-700" },
@@ -28,7 +29,7 @@ export default function AdminOrdersPage() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const limit = 10;
+  const limit = APP_CONFIG.PAGINATION.ADMIN_TABLE;
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);

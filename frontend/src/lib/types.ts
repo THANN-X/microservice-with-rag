@@ -158,7 +158,7 @@ export interface AttributeValue {
 // ตะกร้าสินค้าสำหรับ user คนเดียว
 // CartItem.variant_id คือ key หลักตอนสร้าง order — field ที่มี ? optional คือข้อมูลที่ join มาสำหรับแสดผล
 export interface Cart {
-  id: number;
+  cart_id: number;
   user_id: number;
   items: CartItem[];
   created_at: string;
@@ -166,7 +166,6 @@ export interface Cart {
 }
 
 export interface CartItem {
-  id: number;
   variant_id: number;
   quantity: number;
   variant_name?: string;
@@ -178,6 +177,10 @@ export interface CartItem {
 export interface AddCartItemRequest {
   variant_id: number;
   quantity: number;
+  product_name?: string;
+  variant_name?: string;
+  price?: number;
+  image_url?: string;
 }
 
 export interface UpdateCartItemRequest {

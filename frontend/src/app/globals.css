@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Primary ── */
+  --color-primary: #00675f;
+  --color-primary-dim: #005a52;
+  --color-primary-container: #56f1e0;
+  --color-primary-fixed: #56f1e0;
+  --color-primary-fixed-dim: #43e2d2;
+  --color-on-primary: #bffff5;
+  --color-on-primary-container: #00574f;
+  --color-on-primary-fixed: #00423c;
+  --color-on-primary-fixed-variant: #006159;
+
+  /* ── Secondary ── */
+  --color-secondary: #70516e;
+  --color-secondary-dim: #644661;
+  --color-secondary-container: #ffd6f9;
+  --color-secondary-fixed: #ffd6f9;
+  --color-secondary-fixed-dim: #f0c8ea;
+  --color-on-secondary: #ffeef9;
+  --color-on-secondary-container: #664864;
+  --color-on-secondary-fixed: #523651;
+  --color-on-secondary-fixed-variant: #70516e;
+
+  /* ── Tertiary ── */
+  --color-tertiary: #265f8e;
+  --color-tertiary-dim: #155382;
+  --color-tertiary-container: #95c8fe;
+  --color-tertiary-fixed: #95c8fe;
+  --color-tertiary-fixed-dim: #88baef;
+  --color-on-tertiary: #ecf3ff;
+  --color-on-tertiary-container: #00416b;
+  --color-on-tertiary-fixed: #002c4b;
+  --color-on-tertiary-fixed-variant: #034a79;
+
+  /* ── Surface system ── */
+  --color-surface: #dafdfd;
+  --color-surface-dim: #aadede;
+  --color-surface-bright: #dafdfd;
+  --color-surface-variant: #b5e6e6;
+  --color-surface-container: #c6f0f0;
+  --color-surface-container-low: #d1f8f8;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-high: #bdebeb;
+  --color-surface-container-highest: #b5e6e6;
+  --color-surface-tint: #00675f;
+
+  /* ── On surface ── */
+  --color-on-surface: #123434;
+  --color-on-surface-variant: #416161;
+  --color-on-background: #123434;
+  --color-background: #dafdfd;
+
+  /* ── Outline ── */
+  --color-outline: #5c7d7c;
+  --color-outline-variant: #92b3b3;
+
+  /* ── Error ── */
+  --color-error: #b31b25;
+  --color-error-dim: #9f0519;
+  --color-error-container: #fb5151;
+  --color-on-error: #ffefee;
+  --color-on-error-container: #570008;
+
+  /* ── Inverse ── */
+  --color-inverse-surface: #001111;
+  --color-inverse-on-surface: #82a3a3;
+  --color-inverse-primary: #56f1e0;
+
+  /* ── Font family ── */
+  --font-sans: "Be Vietnam Pro", system-ui, sans-serif;
+  --font-headline: "Be Vietnam Pro", system-ui, sans-serif;
+  --font-body: "Be Vietnam Pro", system-ui, sans-serif;
+
+  /* ── Ambient shadow ── */
+  --shadow-ambient: 0px 20px 40px rgba(47, 79, 79, 0.06);
+}
+
+/* ── Base resets ── */
+* {
+  border-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Material Symbols default ── */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* ── Thai text ── */
+.thai-line-height,
+:lang(th) {
+  line-height: 1.8;
+}
+
+/* ── Glass nav utility ── */
+.glass-nav {
+  background: rgba(218, 253, 253, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ── Editorial gradient ── */
+.editorial-gradient {
+  background: linear-gradient(135deg, #00675f 0%, #56f1e0 100%);
+}
+
+/* ── Primary button gradient ── */
+.gradient-primary {
+  background: linear-gradient(135deg, #00675f 0%, #56f1e0 100%);
+}
+
+/* ── Ambient shadow utility ── */
+.shadow-ambient {
+  box-shadow: 0px 20px 40px rgba(47, 79, 79, 0.06);
+}
+
+/* ── No scrollbar utility ── */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ── Selection color ── */
+::selection {
+  background-color: rgba(0, 103, 95, 0.15);
+  color: #00675f;
+}
+
+/* ── Toast animation ── */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.2s ease-out;
+}
+
+/* ── Focus-visible ring ── */
+:focus-visible {
+  outline: 2px solid rgba(0, 103, 95, 0.4);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* ── Custom scrollbar (non-hidden) ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 103, 95, 0.15);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 103, 95, 0.25);
+}

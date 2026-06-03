@@ -8,6 +8,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import {
   Plus,
   Search,
@@ -27,6 +28,7 @@ import {
   adminProductService,
   attributeService,
 } from "@/lib/services";
+import { APP_CONFIG } from "@/lib/constants";
 import type {
   Product,
   Category,
@@ -125,12 +127,12 @@ function CloudinaryImageUploader({
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {urls.map((url, i) => (
-          <div key={i} className="relative">
-            <img src={url} alt="" className="h-16 w-16 rounded-lg object-cover bg-surface-highest" />
+          <div key={i} className="relative h-16 w-16">
+            <Image src={url} alt="" fill className="rounded-lg object-cover bg-surface-highest" sizes="64px" />
             <button
               type="button"
               onClick={() => remove(i)}
-              className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-error text-white shadow-sm"
+              className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-error text-white shadow-sm z-10"
             >
               <X size={10} />
             </button>
@@ -336,7 +338,7 @@ function AddProductModal({
   const handleSubmit = async () => {
     const {name, description, image_urls, category_ids, variantName, sku, price, stock, attribute_value_ids} = form;
 
-    if (!name || !sku) return;
+    if (!name || !sku || !variantName) return;
     setSaving(true);
     try {
       const req: CreateProductRequest = {
@@ -347,7 +349,7 @@ function AddProductModal({
         variants: [
           {
             sku,
-            name: variantName || name,
+            name: variantName,
             price: parseFloat(price) || 0,
             stock: parseInt(stock) || 0,
             attribute_value_ids,
@@ -357,17 +359,7 @@ function AddProductModal({
       await adminProductService.create(req);
       onCreated();
       onClose();
-      setForm({
-        name: "",
-        description: "",
-        image_urls: [],
-        category_ids: [],
-        variantName: "",
-        sku: "",
-        price: "",
-        stock: "",
-        attribute_value_ids: [],
-      });
+      setForm({ name: "", description: "", image_urls: [], category_ids: [], variantName: "", sku: "", price: "", stock: "", attribute_value_ids: [] });
     } finally {
       setSaving(false);
     }
@@ -455,6 +447,28 @@ function AddProductModal({
               }
               rows={3}
               className="w-full resize-none rounded-xl bg-surface-low/40 px-4 py-2.5 text-sm outline-none transition-all focus:bg-surface-lowest focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          {/* Variant section separator */}
+          <div className="flex items-center gap-3 pt-1">
+            <div className="h-px flex-1 bg-surface-highest" />
+            <span className="text-xs font-semibold text-secondary">Variant แรก</span>
+            <div className="h-px flex-1 bg-surface-highest" />
+          </div>
+
+          {/* Variant Name */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-secondary">
+              ชื่อ Variant *
+              <span className="ml-1 font-normal text-outline">(เช่น สีดำ / ไซส์ M / Standard)</span>
+            </label>
+            <input
+              type="text"
+              placeholder="เช่น สีดำ ไซส์ M"
+              value={form.variantName}
+              onChange={(e) => setForm((f) => ({ ...f, variantName: e.target.value }))}
+              className="w-full rounded-xl bg-surface-low/40 px-4 py-2.5 text-sm outline-none transition-all focus:bg-surface-lowest focus:ring-2 focus:ring-primary/20"
             />
           </div>
 
@@ -558,7 +572,7 @@ function AddProductModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !form.name || !form.sku}
+            disabled={saving || !form.name || !form.sku || !form.variantName}
             className="gradient-primary rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/25 transition-all hover:shadow-xl disabled:opacity-50"
           >
             {saving ? "กำลังบันทึก..." : "บันทึกสินค้า"}
@@ -962,7 +976,7 @@ export default function AdminProductsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [imagesModalProduct, setImagesModalProduct] = useState<Product | null>(null);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
-  const limit = 10;
+  const limit = APP_CONFIG.PAGINATION.ADMIN_TABLE;
 
   //ดึงข้อมูล Master Data (ทำครั้งเดียวตอนโหลดหน้าเว็บ)
   useEffect(() => {
@@ -1136,11 +1150,15 @@ export default function AdminProductsPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         {p.image_urls?.[0] ? (
-                          <img
-                            src={p.image_urls[0]}
-                            alt={p.name}
-                            className="h-10 w-10 rounded-lg bg-surface-highest object-cover"
-                          />
+                          <div className="relative h-10 w-10">
+                            <Image
+                              src={p.image_urls[0]}
+                              alt={p.name}
+                              fill
+                              sizes="40px"
+                              className="rounded-lg bg-surface-highest object-cover"
+                            />
+                          </div>
                         ) : (
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-highest text-outline">
                             <Package size={18} />
