@@ -30,16 +30,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUser = useCallback(async () => {
-    try {
-      const u = await authService.me();
-      setUser(u);
-    } catch {
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+const fetchUser = useCallback(async () => {
+  try {
+    const u = await authService.me();
+    setUser(u);
+    // Set a role cookie readable by Next.js middleware (not HttpOnly)
+    // Security note: this is for routing only — BFF enforces real auth via JWT
+    document.cookie = `role=${u.role}; path=/; SameSite=Strict`;
+  } catch {
+    setUser(null);
+    document.cookie = "role=; path=/; max-age=0; SameSite=Strict";
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => {
     // What: เรียก fetchUser() ทุกครั้งที่ mount — ไม่ต้องตรวจ localStorage
@@ -65,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // What: ล้าง access_token จาก memory — cookie ถูกลบโดย server ผ่าน Set-Cookie: MaxAge=-1
     setAccessToken(null);
     setUser(null);
+    document.cookie = "role=; path=/; max-age=0; SameSite=Strict"; // ← เพิ่ม
   };
 
   const updateProfile = async (data: UpdateProfileRequest) => {

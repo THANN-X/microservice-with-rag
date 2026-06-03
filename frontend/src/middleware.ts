@@ -19,11 +19,18 @@ export function middleware(request: NextRequest) {
   if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
     const refreshToken = request.cookies.get("refresh_token");
 
+    // ไม่มี cookie เลย → ไป login
     if (!refreshToken) {
-      const loginUrl =  new URL("/admin/login", request.url);
-      return NextResponse.redirect(loginUrl);
+      return NextResponse.redirect(new URL("/admin/login", request.url));
+    }
+
+     // มี cookie แต่ role ไม่ใช่ admin → redirect กลับหน้าหลัก
+    const role = request.cookies.get("role");
+    if (!role || role.value !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
     }
   }
+  
 
   return NextResponse.next();
 }
