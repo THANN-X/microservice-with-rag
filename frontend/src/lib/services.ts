@@ -7,6 +7,7 @@
  * How:  แต่ละ service object ใช้ `api` helper จาก api.ts
  *       แบ่งตาม domain: authService, productService, cartService, ฯลฯ
  */
+import { APP_CONFIG } from "./constants";
 import { api } from "./api";
 import type {
   LoginRequest,
@@ -179,7 +180,7 @@ export const orderService = {
  *       get() ดึงด้วย orderId (เป็น string UUID)
  */
 export const orderHistoryService = {
-  list: (page = 1, limit = 20, status?: string) => {
+  list: (page = 1, limit = APP_CONFIG.PAGINATION.ORDER_HISTORY, status?: string) => {
     // list(2, 20, "PAID")
     //   → GET /api/order-history?page=2&limit=20&status=PAID
     //
@@ -354,7 +355,7 @@ export const adminOrderService = {
  *       admin ต้องเห็นทุก order → ใช้ endpoint แยก /api/order-history/admin
  */
 export const adminOrderHistoryService = {
-  list: (page = 1, limit = 10, status?: string) => {
+  list: (page = 1, limit = APP_CONFIG.PAGINATION.ADMIN_TABLE, status?: string) => {
     const qs = new URLSearchParams();
     qs.set("page", String(page));
     qs.set("limit", String(limit));
