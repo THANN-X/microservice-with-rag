@@ -31,7 +31,12 @@ func (s *cartCommandService) AddItem(ctx context.Context, userID uint, req *dto.
 		return nil, errs.NewUnexpectedError()
 	}
 
-	if err := s.cmdRepo.UpsertItem(ctx, cart.ID, req.VariantID, req.Quantity); err != nil {
+	if err := s.cmdRepo.UpsertItem(ctx, cart.ID, req.VariantID, req.Quantity, domain.CartItemMeta{
+		ProductName: req.ProductName,
+		VariantName: req.VariantName,
+		Price:       req.Price,
+		ImageURL:    req.ImageURL,
+	}); err != nil {
 		logs.Error("AddItem: failed to upsert item")
 		return nil, errs.NewUnexpectedError()
 	}

@@ -26,11 +26,15 @@ func (c *CartEntity) ToCartDomain() *domain.Cart {
 	items := make([]domain.CartItem, len(c.Items))
 	for i, item := range c.Items {
 		items[i] = domain.CartItem{
-			CartID:    item.CartID,
-			VariantID: item.VariantID,
-			Quantity:  item.Quantity,
-			AddedAt:   item.AddedAt,
-			UpdatedAt: item.UpdatedAt,
+			CartID:      item.CartID,
+			VariantID:   item.VariantID,
+			Quantity:    item.Quantity,
+			ProductName: item.ProductName,
+			VariantName: item.VariantName,
+			Price:       item.Price,
+			ImageURL:    item.ImageURL,
+			AddedAt:     item.AddedAt,
+			UpdatedAt:   item.UpdatedAt,
 		}
 	}
 	return &domain.Cart{
@@ -47,12 +51,18 @@ func (c *CartEntity) ToCartDomain() *domain.Cart {
 // WHY ไม่มี gorm.Model?
 //   - Composite PK ขัดแย้งกับ auto-increment ID ของ gorm.Model
 //   - cart_items ถูก delete จริงๆ ไม่ต้อง soft-delete
+
+// ProductName/VariantName/Price/ImageURL เป็น denormalized snapshot ณ เวลาที่ add
 type CartItemEntity struct {
-	CartID    uint      `gorm:"primaryKey"`
-	VariantID uint      `gorm:"primaryKey"`
-	Quantity  int       `gorm:"not null"`
-	AddedAt   time.Time `gorm:"not null"`
-	UpdatedAt time.Time `gorm:"not null"`
+	CartID      uint      `gorm:"primaryKey"`
+	VariantID   uint      `gorm:"primaryKey"`
+	Quantity    int       `gorm:"not null"`
+	ProductName string    `gorm:"type:text;default:''"`
+	VariantName string    `gorm:"type:text;default:''"`
+	Price       float64   `gorm:"type:numeric(12,2);default:0"`
+	ImageURL    string    `gorm:"type:text;default:''"`
+	AddedAt     time.Time `gorm:"not null"`
+	UpdatedAt   time.Time `gorm:"not null"`
 }
 
 func (CartItemEntity) TableName() string {

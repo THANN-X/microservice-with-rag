@@ -14,12 +14,26 @@ type Cart struct {
 
 // CartItem คือ item ภายในตะกร้า
 // Composite PK = (CartID, VariantID) — แต่ละ variant มีได้แค่ 1 row ต่อตะกร้า
+// ProductName/VariantName/Price/ImageURL เป็น denormalized snapshot ณ เวลาที่ add — ไม่ sync ถ้า product เปลี่ยนราคา
 type CartItem struct {
-	CartID    uint
-	VariantID uint
-	Quantity  int
-	AddedAt   time.Time
-	UpdatedAt time.Time
+	CartID      uint
+	VariantID   uint
+	Quantity    int
+	ProductName string
+	VariantName string
+	Price       float64
+	ImageURL    string
+	AddedAt     time.Time
+	UpdatedAt   time.Time
+}
+
+// CartItemMeta คือ product snapshot ที่ frontend ส่งมาตอน AddItem
+// ใช้ denormalize ใน cart_items เพื่อแสดงผลโดยไม่ต้อง join product service
+type CartItemMeta struct {
+	ProductName string
+	VariantName string
+	Price       float64
+	ImageURL    string
 }
 
 // NewCart สร้างตะกร้าใหม่สำหรับ user

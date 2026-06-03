@@ -64,14 +64,18 @@ func (r *cartRepository) FindOrCreateByUserID(ctx context.Context, userID uint) 
 // WHY ใช้ clause.OnConflict?
 //   - GORM รองรับ ON CONFLICT DO UPDATE ผ่าน clause.OnConflict
 //   - gorm.Expr("cart_items.quantity + EXCLUDED.quantity") ทำ atomic accumulation
-//   - ปลอดภัยจาก race condition เหมือน raw SQL แต่ type-safe กว่า
-func (r *cartRepository) UpsertItem(ctx context.Context, cartID uint, variantID uint, quantity int) error {
+//   - metadata (product_name ฯลฯ) อัปเดตเมื่อ conflict เพื่อให้ข้อมูลล่าสุดเสมอ
+func (r *cartRepository) UpsertItem(ctx context.Context, cartID uint, variantID uint, quantity int, meta domain.CartItemMeta) error {
 	item := entity.CartItemEntity{
-		CartID:    cartID,
-		VariantID: variantID,
-		Quantity:  quantity,
-		AddedAt:   time.Now(),
-		UpdatedAt: time.Now(),
+		CartID:      cartID,
+		VariantID:   variantID,
+		Quantity:    quantity,
+		ProductName: meta.ProductName,
+		VariantName: meta.VariantName,
+		Price:       meta.Price,
+		ImageURL:    meta.ImageURL,
+		AddedAt:     time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 	return r.GetDB(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{
@@ -79,8 +83,12 @@ func (r *cartRepository) UpsertItem(ctx context.Context, cartID uint, variantID 
 			{Name: "variant_id"},
 		},
 		DoUpdates: clause.Assignments(map[string]interface{}{
-			"quantity":   gorm.Expr("cart_items.quantity + EXCLUDED.quantity"),
-			"updated_at": gorm.Expr("NOW()"),
+			"quantity":     gorm.Expr("cart_items.quantity + EXCLUDED.quantity"),
+			"product_name": gorm.Expr("EXCLUDED.product_name"),
+			"variant_name": gorm.Expr("EXCLUDED.variant_name"),
+			"price":        gorm.Expr("EXCLUDED.price"),
+			"image_url":    gorm.Expr("EXCLUDED.image_url"),
+			"updated_at":   gorm.Expr("NOW()"),
 		}),
 	}).Create(&item).Error
 }

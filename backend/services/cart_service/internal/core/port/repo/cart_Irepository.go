@@ -15,7 +15,8 @@ type CartCommandRepository interface {
 	FindOrCreateByUserID(ctx context.Context, userID uint) (*domain.Cart, error)
 
 	// UpsertItem — เพิ่ม item ถ้ายังไม่มี หรือบวกจำนวนถ้ามีอยู่แล้ว (ON CONFLICT DO UPDATE)
-	UpsertItem(ctx context.Context, cartID uint, variantID uint, quantity int) error
+	// meta ใช้ denormalize product info ณ เวลาที่ add
+	UpsertItem(ctx context.Context, cartID uint, variantID uint, quantity int, meta domain.CartItemMeta) error
 
 	// SetItemQuantity — กำหนดจำนวน item ตรงๆ (ใช้ตอน PUT /cart/items/:variantId)
 	SetItemQuantity(ctx context.Context, cartID uint, variantID uint, quantity int) error
