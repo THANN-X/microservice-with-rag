@@ -30,6 +30,8 @@ import (
 	repository "order_service/internal/adapter/repository/postgres"
 	// config
 	"order_service/internal/config"
+	// gateway port interface
+	gatewayport "order_service/internal/core/port/gateway"
 	// services
 	"order_service/internal/core/service/command"
 	"order_service/internal/core/service/query"
@@ -50,12 +52,21 @@ func main() {
 	inboxRepo := repository.NewInboxRepository(db)
 	outboxRepo := repository.NewOutboxRepository(db)
 	paymentRepo := repository.NewPaymentRepository(db)
-	paymentGateway := client.NewStubPaymentGateway()
+	// Auto-select gateway: ถ้ามี STRIPE_SECRET_KEY → ใช้ Stripe, ถ้าไม่มี → ใช้ Stub (dev/test)
+	var paymentGateway gatewayport.PaymentGateway
+	if cfg.StripeSecretKey != "" {
+		paymentGateway = client.NewStripeGateway(cfg.StripeSecretKey, cfg.StripeWebhookSecret)
+		log.Println("Payment gateway: Stripe (live/test mode)")
+	} else {
+		paymentGateway = client.NewStubPaymentGateway()
+		log.Println("Payment gateway: Stub (set STRIPE_SECRET_KEY to enable Stripe)")
+	}
 
 	_ = godotenv.Load()
 
 	// ─── Services ─────────────────────────────────────────────────────────────
-	cmdService := command.NewOrderCommandService(cmdRepo, inboxRepo, paymentRepo, paymentGateway)
+	catalogClient := client.NewCatalogClient(cfg.CatalogServiceURL)
+	cmdService := command.NewOrderCommandService(cmdRepo, inboxRepo, paymentRepo, paymentGateway, catalogClient)
 	queryService := query.NewOrderQueryService(queryRepo)
 
 	// ─── Kafka Producer ───────────────────────────────────────────────────────
@@ -144,7 +155,7 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		port := os.Getenv("PORT")
+		port := os.Getenv("APP_PORT")
 		if port == "" {
 			port = "3003" // WHY 3003? auth=3001, product=3002, order=3003
 		}

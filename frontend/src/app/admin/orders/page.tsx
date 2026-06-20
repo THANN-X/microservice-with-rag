@@ -17,6 +17,8 @@ import { APP_CONFIG } from "@/lib/constants";
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   PENDING: { label: "รอดำเนินการ", cls: "bg-amber-50 text-amber-700" },
   CONFIRMED: { label: "ยืนยันแล้ว", cls: "bg-blue-50 text-blue-700" },
+  AWAITING_PAYMENT: { label: "รอชำระเงิน", cls: "bg-orange-50 text-orange-700" },
+  PAID: { label: "ชำระเงินแล้ว", cls: "bg-emerald-50 text-emerald-700" },
   SHIPPED: { label: "จัดส่งแล้ว", cls: "bg-sky-50 text-sky-700" },
   COMPLETED: { label: "สำเร็จ", cls: "bg-emerald-50 text-emerald-700" },
   CANCELLED: { label: "ยกเลิก", cls: "bg-red-50 text-red-700" },
@@ -179,11 +181,15 @@ export default function AdminOrdersPage() {
                       </td>
                       {/* Date */}
                       <td className="px-4 py-4 text-secondary">
-                        {new Date(o.created_at).toLocaleDateString("th-TH", {
+                        <div>{new Date(o.created_at).toLocaleDateString("th-TH", {
                           day: "numeric",
                           month: "short",
                           year: "2-digit",
-                        })}
+                        })}</div>
+                        <div className="text-xs text-outline">{new Date(o.created_at).toLocaleTimeString("th-TH", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}</div>
                       </td>
                       {/* Amount */}
                       <td className="px-4 py-4 font-medium text-on-surface">
@@ -208,7 +214,7 @@ export default function AdminOrdersPage() {
                       <td className="px-4 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <a
-                            href={`/orders/${o.order_id}`}
+                            href={`/admin/orders/${o.order_id}`}
                             className="rounded-lg p-2 text-secondary transition-colors hover:bg-surface-highest hover:text-primary"
                             title="ดูรายละเอียด"
                           >

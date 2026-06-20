@@ -105,14 +105,23 @@ func (h *orderMessageHandler) handleStockReserved(ctx context.Context, msg *sara
 			msg.Topic, msg.Partition, msg.Offset, err)
 	}
 
-	// WHY ใช้ string(msg.Key) เป็น MessageID?
-	//   - msg.Key คือ AggregateID ที่ producer (product_service) ตั้งไว้ใน outbox
-	//   - สำหรับ StockReservedEvent: AggregateID = fmt.Sprintf("order-%s", orderID)
-	//   - ค่านี้ unique ต่อ OrderID → ใช้เป็น InboxEvent.ID เพื่อ Idempotency ได้
+	// WHY อ่าน EventID จาก Header แทน msg.Key?
+	//   - Kafka Key = AggregateID (product_service ตั้ง) ใช้เพื่อ partition ordering เท่านั้น
+	//   - EventID ใน Header = outbox event UUID ที่ unique ต่อ event → ใช้เป็น inbox key
+	//   - Fallback: offset-based ID ถ้าไม่มี header (backward compatible)
+	messageID := getHeaderValue(msg.Headers, "EventID")
+	if messageID == "" {
+		logs.Warn(fmt.Sprintf("order: StockReservedEvent has no EventID header, falling back to offset-based messageID. topic=%s partition=%d offset=%d",
+			msg.Topic, msg.Partition, msg.Offset))
+		messageID = fmt.Sprintf("%s:%d:%d", msg.Topic, msg.Partition, msg.Offset)
+	}
+
+	// WHY อ่าน string(msg.Key) ไม่ได้?
+	//   - msg.Key = AggregateID ซึ่งเหมือนกันทุก StockReserved event ของ order เดียวกัน → inbox จะชนถ้า retry
 	req := &dto.HandleStockResultReq{
 		OrderID:   evt.OrderID,
-		MessageID: string(msg.Key),
-		Status:    evt.Status, // "SUCCESS" หรือ "FAILED"
+		MessageID: messageID,
+		Status:    evt.Status,
 	}
 
 	return h.cmdService.HandleStockResult(ctx, req)
