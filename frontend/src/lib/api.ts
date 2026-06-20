@@ -68,7 +68,9 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message ?? `Request failed: ${res.status}`);
+    const backendError = body.error || body.message || body.details;
+  
+    throw new Error(backendError ?? `Request failed: ${res.status}`);
   }
 
   if (res.status === 204) return {} as T;

@@ -4,6 +4,7 @@ go 1.25.4
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.10
+	github.com/valyala/fasthttp v1.68.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 	jwtutils v0.0.0
@@ -22,7 +23,6 @@ require (
 	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
 	github.com/tinylib/msgp v1.2.5 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.68.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
@@ -30,4 +30,3 @@ require (
 )
 
 replace jwtutils => ../pkg/utils/jwtutils
-

@@ -49,7 +49,7 @@ export interface RegisterRequest {
 // UserProfile — regular user (email-based login)
 export interface UserProfile {
   id: number;
-  role: "user";
+  role: "customer";
   first_name: string;
   last_name: string;
   email: string;
@@ -208,6 +208,9 @@ export type OrderStatus = "PENDING" | "CONFIRMED" | "AWAITING_PAYMENT" | "PAID" 
 export interface OrderItem {
   id: string;
   variant_id: number;
+  product_name: string;
+  variant_name: string;
+  image_url: string;
   quantity: number;
   unit_price: number;
   subtotal: number;
@@ -224,7 +227,7 @@ export interface ShippingAddress {
 }
 
 export interface CreateOrderRequest {
-  items: { variant_id: number; quantity: number; unit_price: number }[];
+  items: { variant_id: number; quantity: number }[];
   shipping_address: ShippingAddress;
   note?: string;
 }
@@ -250,6 +253,9 @@ export interface PaymentResponse {
   payment_method: string;
   paid_at?: string;
   created_at: string;
+  client_secret?: string;
+  // PromptPay QR — URL รูป QR ที่ backend ดึงจาก Stripe next_action โดยตรง
+  qr_image_url?: string;
 }
 
 // ─── Order History (read-optimized from MongoDB) ───

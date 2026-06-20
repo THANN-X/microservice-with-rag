@@ -28,6 +28,7 @@ type EventTypeHeader struct {
 
 type ProductPriceChangedEvent struct {
 	ProductID  uint
+	VariantID  uint
 	OldPrice   float64
 	NewPrice   float64
 	OccurredAt time.Time
@@ -128,6 +129,53 @@ type StockAdjustedEvent struct {
 	OccurredAt time.Time `json:"occurred_at"`
 }
 
+// CategoryKV เป็น category snapshot (id + name + slug) ที่ฝังไปกับ event
+// เพื่อให้ catalog_service embed ลง document ได้โดยไม่ต้อง query product_service กลับ
+type CategoryKV struct {
+	CategoryID uint   `json:"category_id"`
+	Name       string `json:"name"`
+	Slug       string `json:"slug"`
+}
+
+// Event: Product categories set/replaced (ตอนสร้าง product หรือแก้ไข general info)
+// WHY ต้องมี? — catalog_service ใช้ categories ในการ filter สินค้า (category_id)
+//
+//	ถ้าไม่ sync → สินค้าจะ filter ตาม category ใน catalog ไม่เจอ
+type ProductCategoriesUpdatedEvent struct {
+	ProductID  uint         `json:"product_id"`
+	Categories []CategoryKV `json:"categories"`
+	OccurredAt time.Time    `json:"occurred_at"`
+}
+
+// Event: Product visibility toggled (active/inactive)
+// WHY ต้องมี? — ถ้า admin ซ่อนสินค้า (is_active=false) ใน product_service แต่ไม่ส่ง event
+//
+//	catalog (read model) จะยังโชว์สินค้านั้นบนหน้าเว็บต่อไป → ข้อมูลไม่ตรงกัน
+type ProductActiveChangedEvent struct {
+	ProductID  uint      `json:"product_id"`
+	IsActive   bool      `json:"is_active"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+// Event: Variant visibility toggled (active/inactive)
+type ProductVariantActiveChangedEvent struct {
+	ProductID  uint      `json:"product_id"`
+	VariantID  uint      `json:"variant_id"`
+	IsActive   bool      `json:"is_active"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+// Event: Stock changed to an absolute value (reserve/release/adjust รวมเป็น event เดียว)
+// WHY absolute แทน delta? — idempotent + ทน message ซ้ำ/หาย/มาผิดลำดับ (เซฟค่าจริงทับทื่อๆ)
+//
+//	catalog ฟัง event เดียวนี้เพื่อ sync stock ทุกกรณี (ซื้อ/คืน/ปรับ)
+type StockUpdatedEvent struct {
+	ProductID  uint      `json:"product_id"`
+	VariantID  uint      `json:"variant_id"`
+	NewStock   int       `json:"new_stock"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
 // WHAT: OrderCreatedEvent คือ event ที่ order_service raise เมื่อ Order ถูกสร้างสำเร็จ
 // WHY: product_service ใช้ Items (VariantID+Qty) สำหรับ reserve stock (Saga step 1)
 //      order_history_service ใช้ข้อมูลทั้งหมดสร้าง denormalized read model
@@ -213,6 +261,22 @@ func (e ProductVariantImagesUpdatedEvent) EventName() string {
 
 func (e StockAdjustedEvent) EventName() string {
 	return "STOCK_ADJUSTED"
+}
+
+func (e ProductCategoriesUpdatedEvent) EventName() string {
+	return "PRODUCT_CATEGORIES_UPDATED"
+}
+
+func (e ProductActiveChangedEvent) EventName() string {
+	return "PRODUCT_ACTIVE_CHANGED"
+}
+
+func (e ProductVariantActiveChangedEvent) EventName() string {
+	return "PRODUCT_VARIANT_ACTIVE_CHANGED"
+}
+
+func (e StockUpdatedEvent) EventName() string {
+	return "STOCK_UPDATED"
 }
 
 // ─── Order Events ─────────────────────────────────────────────────────────────

@@ -88,6 +88,12 @@ func isPublicRoute(path, method string) bool {
 		return true
 	}
 
+	// Stripe Webhook — ใช้ HMAC signature ไม่ใช่ JWT
+	// Stripe เรียก endpoint นี้โดยตรง ไม่มี Authorization header
+	if path == "/webhook/payment" && method == "POST" {
+		return true
+	}
+
 	// Catalog: ทุก route เป็น public (read-only search)
 	if strings.HasPrefix(path, "/api/catalog") {
 		return true

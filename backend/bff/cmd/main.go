@@ -236,6 +236,13 @@ func main() {
 	app.All("/api/orders", orderHandler.Handle)
 	app.All("/api/orders/*", orderHandler.Handle)
 
+	// --- Stripe Webhook (no auth — HMAC signature verified by order-service) ---
+	// What: forward /webhook/payment ตรงไป order-service โดยไม่ strip prefix
+	// Why:  Stripe เรียก BFF:8080/webhook/payment → order-service:3003/webhook/payment
+	//       orderHandler strip "/api" — เนื่องจาก path ไม่มี /api จึง forward ตรงๆ
+	//       ไม่ใช้ GatewayAuth (isPublicRoute คืน true สำหรับ route นี้)
+	app.Post("/webhook/payment", orderHandler.Handle)
+
 	// --- Catalog Service (REST Proxy) ---
 	// What: forward catalog search requests ไปยัง catalog-service (:3005)
 	// Why:  catalog-service เป็น read-optimized (MongoDB) สำหรับ search สินค้า

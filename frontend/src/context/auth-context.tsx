@@ -74,14 +74,14 @@ const fetchUser = useCallback(async () => {
 
   const updateProfile = async (data: UpdateProfileRequest) => {
     // Why: updateProfile เรียก /users/update/:id — user endpoint เท่านั้น admin ใช้ไม่ได้
-    if (!user || user.role !== "user") return;
+    if (!user || user.role !== "customer") return;
     await authService.updateProfile(user.id, data);
     await fetchUser();
   };
 
   const changePassword = async (data: ChangePasswordRequest) => {
     // Why: changePassword เรียก /users/chgpass/:id — user endpoint เท่านั้น admin ใช้ไม่ได้
-    if (!user || user.role !== "user") return;
+    if (!user || user.role !== "customer") return;
     await authService.changePassword(user.id, data);
   };
 
