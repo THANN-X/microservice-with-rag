@@ -5,6 +5,7 @@ import (
 	repo "catalog_service/internal/core/port/repo"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"errs"
@@ -12,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"logs"
 )
 
 const catalogCollection = "catalog_products"
@@ -40,6 +42,9 @@ type variantDoc struct {
 	IsActive   bool           `bson:"is_active"`
 	ImageURLs  []string       `bson:"image_urls"`
 	Attributes []attributeDoc `bson:"attributes"`
+	// UpdatedAt = OccurredAt ของ event ล่าสุดที่แก้ variant นี้ — ใช้เป็น Timestamp Guard
+	// กัน event เก่าที่หลงมาทีหลัง (out-of-order) มาทับค่าที่ใหม่กว่า
+	UpdatedAt time.Time `bson:"updated_at,omitempty"`
 }
 
 type categoryDoc struct {
@@ -151,20 +156,35 @@ func (r *catalogRepository) UpdateInfo(ctx context.Context, productID uint, name
 	return nil
 }
 
-func (r *catalogRepository) UpdateVariantPrice(ctx context.Context, productID uint, variantID uint, newPrice float64) error {
+func (r *catalogRepository) UpdateVariantPrice(ctx context.Context, productID uint, variantID uint, newPrice float64, occurredAt time.Time) error {
 	filter := bson.M{"product_id": productID, "is_deleted": false}
 	update := bson.M{
 		"$set": bson.M{
-			"variants.$[elem].price": newPrice,
-			"updated_at":             time.Now(),
+			"variants.$[elem].price":      newPrice,
+			"variants.$[elem].updated_at": occurredAt,
+			"updated_at":                  time.Now(),
 		},
 	}
+	// Timestamp Guard: แก้เฉพาะ variant ที่ updated_at เก่ากว่า event (หรือยังไม่เคยมี) → ปัด event เก่าที่มาช้าทิ้ง
 	opts := options.Update().SetArrayFilters(options.ArrayFilters{
-		Filters: []interface{}{bson.M{"elem.variant_id": variantID}},
+		Filters: []interface{}{bson.M{
+			"elem.variant_id": variantID,
+			"$or": []bson.M{
+				{"elem.updated_at": bson.M{"$exists": false}},
+				{"elem.updated_at": bson.M{"$lt": occurredAt}},
+			},
+		}},
 	})
 
-	_, err := r.col.UpdateOne(ctx, filter, update, opts)
-	return err
+	result, err := r.col.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		// ไม่เจอ product document — event อาจมาก่อน PRODUCT_CREATED (gap) → log ไว้ตรวจสอบ ไม่ block partition
+		logs.Warn(fmt.Sprintf("catalog: UpdateVariantPrice no matching product (gap?) product_id=%d variant_id=%d", productID, variantID))
+	}
+	return nil
 }
 
 func (r *catalogRepository) AddVariant(ctx context.Context, productID uint, variant domain.EmbeddedVariant) error {
@@ -184,20 +204,35 @@ func (r *catalogRepository) AddVariant(ctx context.Context, productID uint, vari
 	return nil
 }
 
-func (r *catalogRepository) UpdateVariantStock(ctx context.Context, productID uint, variantID uint, newStock int) error {
+func (r *catalogRepository) UpdateVariantStock(ctx context.Context, productID uint, variantID uint, newStock int, occurredAt time.Time) error {
 	filter := bson.M{"product_id": productID, "is_deleted": false}
 	update := bson.M{
 		"$set": bson.M{
-			"variants.$[elem].stock": newStock,
-			"updated_at":             time.Now(),
+			"variants.$[elem].stock":      newStock,
+			"variants.$[elem].updated_at": occurredAt,
+			"updated_at":                  time.Now(),
 		},
 	}
+	// Timestamp Guard: แก้เฉพาะ variant ที่ updated_at เก่ากว่า event (หรือยังไม่เคยมี) → ปัด event เก่าที่มาช้าทิ้ง
 	opts := options.Update().SetArrayFilters(options.ArrayFilters{
-		Filters: []interface{}{bson.M{"elem.variant_id": variantID}},
+		Filters: []interface{}{bson.M{
+			"elem.variant_id": variantID,
+			"$or": []bson.M{
+				{"elem.updated_at": bson.M{"$exists": false}},
+				{"elem.updated_at": bson.M{"$lt": occurredAt}},
+			},
+		}},
 	})
 
-	_, err := r.col.UpdateOne(ctx, filter, update, opts)
-	return err
+	result, err := r.col.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		// ไม่เจอ product document — event อาจมาก่อน PRODUCT_CREATED (gap) → log ไว้ตรวจสอบ ไม่ block partition
+		logs.Warn(fmt.Sprintf("catalog: UpdateVariantStock no matching product (gap?) product_id=%d variant_id=%d", productID, variantID))
+	}
+	return nil
 }
 
 func (r *catalogRepository) MarkDeleted(ctx context.Context, productID uint) error {
@@ -253,7 +288,75 @@ func (r *catalogRepository) UpdateVariantImages(ctx context.Context, productID u
 	return err
 }
 
-// --- Read Methods ---
+// UpdateCategories แทนที่ category list ทั้งใบ (idempotent — set ทับทั้งหมด)
+func (r *catalogRepository) UpdateCategories(ctx context.Context, productID uint, categories []domain.EmbeddedCategory) error {
+	filter := bson.M{"product_id": productID, "is_deleted": false}
+	update := bson.M{
+		"$set": bson.M{
+			"categories": toCategoryDocs(categories),
+			"updated_at": time.Now(),
+		},
+	}
+	result, err := r.col.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errs.NewNotFoundError("product not found in catalog")
+	}
+	return nil
+}
+
+// SetActive ตั้ง is_active ระดับ product (ซ่อน/แสดงสินค้าบนหน้าเว็บ)
+// WHY filter is_deleted:false? — สินค้าที่ลบไปแล้วไม่ควรถูกปลุกกลับมาด้วยการ toggle active
+func (r *catalogRepository) SetActive(ctx context.Context, productID uint, active bool) error {
+	filter := bson.M{"product_id": productID, "is_deleted": false}
+	update := bson.M{
+		"$set": bson.M{
+			"is_active":  active,
+			"updated_at": time.Now(),
+		},
+	}
+	result, err := r.col.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errs.NewNotFoundError("product not found in catalog")
+	}
+	return nil
+}
+
+// SetVariantActive ตั้ง is_active ระดับ variant (ใช้ arrayFilters)
+func (r *catalogRepository) SetVariantActive(ctx context.Context, productID uint, variantID uint, active bool, occurredAt time.Time) error {
+	filter := bson.M{"product_id": productID, "is_deleted": false}
+	update := bson.M{
+		"$set": bson.M{
+			"variants.$[elem].is_active":  active,
+			"variants.$[elem].updated_at": occurredAt,
+			"updated_at":                  time.Now(),
+		},
+	}
+	// Timestamp Guard: แก้เฉพาะ variant ที่ updated_at เก่ากว่า event (หรือยังไม่เคยมี) → ปัด event เก่าที่มาช้าทิ้ง
+	opts := options.Update().SetArrayFilters(options.ArrayFilters{
+		Filters: []interface{}{bson.M{
+			"elem.variant_id": variantID,
+			"$or": []bson.M{
+				{"elem.updated_at": bson.M{"$exists": false}},
+				{"elem.updated_at": bson.M{"$lt": occurredAt}},
+			},
+		}},
+	})
+	result, err := r.col.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		// ไม่เจอ product document — event อาจมาก่อน PRODUCT_CREATED (gap) → log ไว้ตรวจสอบ ไม่ block partition
+		logs.Warn(fmt.Sprintf("catalog: SetVariantActive no matching product (gap?) product_id=%d variant_id=%d", productID, variantID))
+	}
+	return nil
+}
 
 func (r *catalogRepository) FindByProductID(ctx context.Context, productID uint) (*domain.CatalogProduct, error) {
 	filter := bson.M{"product_id": productID, "is_deleted": false}

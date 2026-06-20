@@ -107,6 +107,9 @@ func (s *productCommandService) UpdateProductGeneralInfo(ctx context.Context, us
 		product.Categories = newCategories // GORM จะ handle replace ให้ถ้าระบุ setup ถูกต้อง
 		product.UpdatedBy = userID
 
+		// แจ้ง catalog read model ให้ resync category list (ใช้ filter สินค้าตาม category)
+		product.RaiseCategoriesUpdated()
+
 		if err = s.cmdRepo.UpdateProduct(txCtx, product); err != nil {
 			logs.Error(err)
 			return errs.NewUnexpectedError()
@@ -256,14 +259,49 @@ func (s *productCommandService) AddVariant(ctx context.Context, userID uint, req
 // ทำไมถึงไม่ใช้ RunInTx?
 //   - เป็น single UPDATE แค่ 1 statement ไม่มี domain event ที่ต้องเขียน outbox
 //   - ใช้ RunInTx จะเพิ่ม overhead โดยไม่จำเป็น
+//
 // WHY ไม่ Load product ก่อน?
 //   - SetProductActive ใน repo เช็ค RowsAffected == 0 แล้วคืน ErrRecordNotFound เองอยู่แล้ว
 //   - Load whole aggregate (พร้อม Variants/Categories) แค่เพื่อเช็ค existence นั้นเปลืองโดยไม่จำเป็น
 func (s *productCommandService) SetProductActive(ctx context.Context, userID uint, productID uint, active bool) error {
-	if err := s.cmdRepo.SetProductActive(ctx, productID, active); err != nil {
-		if errors.Is(err, domain.ErrRecordNotFound) {
-			return errs.NewNotFoundError(fmt.Sprintf("product with ID %d not found", productID))
+	// WHY RunInTx? — ต้อง UPDATE is_active + เขียน outbox event ใน atomic boundary เดียวกัน
+	//   เพื่อให้ catalog (read model) รู้ว่าสินค้าถูกซ่อน/แสดง → ไม่งั้น catalog ยังโชว์สินค้าที่ถูกซ่อน
+	return s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := s.cmdRepo.SetProductActive(txCtx, productID, active); err != nil {
+			if errors.Is(err, domain.ErrRecordNotFound) {
+				return errs.NewNotFoundError(fmt.Sprintf("product with ID %d not found", productID))
+			}
+			logs.Error(err)
+			return errs.NewUnexpectedError()
 		}
+
+		evt := &events.ProductActiveChangedEvent{
+			ProductID:  productID,
+			IsActive:   active,
+			OccurredAt: time.Now(),
+		}
+		return s.saveProductEvent(txCtx, productID, evt)
+	})
+}
+
+// saveProductEvent marshal domain event แล้วเขียนลง outbox topic "product.events"
+// โดยใช้ AggregateID = productID → การันตี ordering ต่อสินค้าใน Kafka partition เดียว (catalog consume)
+func (s *productCommandService) saveProductEvent(ctx context.Context, productID uint, evt events.DomainEvent) error {
+	payloadBytes, err := json.Marshal(evt)
+	if err != nil {
+		logs.Error(err)
+		return errs.NewUnexpectedError()
+	}
+
+	outboxMessage := domain.NewOutboxMessage(
+		"product.events",
+		fmt.Sprintf("%d", productID),
+		"PRODUCT",
+		evt.EventName(),
+		string(payloadBytes),
+	)
+
+	if err := s.outboxRepo.Save(ctx, outboxMessage); err != nil {
 		logs.Error(err)
 		return errs.NewUnexpectedError()
 	}
@@ -299,11 +337,21 @@ func (s *productCommandService) SetVariantActive(ctx context.Context, userID uin
 		return errs.NewNotFoundError(fmt.Sprintf("variant with ID %d not found in product %d", variantID, productID))
 	}
 
-	if err := s.cmdRepo.SetVariantActive(ctx, variantID, active); err != nil {
-		logs.Error(err)
-		return errs.NewUnexpectedError()
-	}
-	return nil
+	// UPDATE is_active + outbox event ใน atomic boundary เดียว → catalog sync สถานะ variant
+	return s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := s.cmdRepo.SetVariantActive(txCtx, variantID, active); err != nil {
+			logs.Error(err)
+			return errs.NewUnexpectedError()
+		}
+
+		evt := &events.ProductVariantActiveChangedEvent{
+			ProductID:  productID,
+			VariantID:  variantID,
+			IsActive:   active,
+			OccurredAt: time.Now(),
+		}
+		return s.saveProductEvent(txCtx, productID, evt)
+	})
 }
 
 // USE CASE: AdjustStock (Admin)
@@ -343,6 +391,17 @@ func (s *productCommandService) AdjustStock(ctx context.Context, userID uint, re
 			return errs.NewUnexpectedError()
 		}
 
+		// emit StockUpdatedEvent (absolute) → catalog sync stock ผ่าน event กลางตัวเดียว
+		stockEvt := &events.StockUpdatedEvent{
+			ProductID:  req.ProductID,
+			VariantID:  req.VariantID,
+			NewStock:   req.NewStock,
+			OccurredAt: time.Now(),
+		}
+		if err := s.saveProductEvent(txCtx, req.ProductID, stockEvt); err != nil {
+			return err
+		}
+
 		return nil
 	})
 }
@@ -365,21 +424,6 @@ func (s *productCommandService) ReserveStock(ctx context.Context, req *dto.Reser
 	//   - ถ้ารวม TX เดียว: FAILED event อาจถูก rollback ไปพร้อมกัน → Saga ค้าง
 
 	txErr := s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
-		/*protect race condition
-
-		Load Aggregate Root (เพื่อเช็คว่ามีสินค้านี้จริงไหม)
-		 product, err := s.cmdRepo.GetProductByID(ctx, req.ProductID)
-
-		 if err != nil {
-		 	logs.Error(err)
-		 	return errs.NewUnexpectedError()
-		 }
-
-		 if product == nil {
-			logs.Error(err)
-			return errs.NewNotFoundError(fmt.Sprintf("product with ID %d not found", req.ProductID))
-		 } */
-
 		// Idempotency Check (Inbox)
 		// ตรวจสอบว่า MessageID นี้เคยถูก process สำเร็จไปหรือยัง
 		processed, err := s.inboxRepo.HasProcessedMessage(txCtx, req.MessageID)
@@ -396,15 +440,6 @@ func (s *productCommandService) ReserveStock(ctx context.Context, req *dto.Reser
 
 		// Atomically decrement stock; DecreaseStock enforces stock >= qty at the DB level
 		for _, item := range req.Items {
-
-			/* Call Domain Method เพื่อเช็คเงื่อนไขต่างๆ
-			err = product.CheckStockAvailability(item.VariantID, item.Qty)
-
-			if err != nil {
-				logs.Error(err)
-				return errs.NewInsufficientStockError(err.Error())
-			} */
-
 			// DecreaseStock จะเช็ค stock >= qty ให้เองใน Repo (Atomic Update)
 			// WHY return ErrNoDataModified as-is (ไม่ wrap)?
 			//   - Caller ด้านนอก TX จะ errors.Is() เพื่อแยก "stock ไม่พอ" ออกจาก transient errors
@@ -421,6 +456,25 @@ func (s *productCommandService) ReserveStock(ctx context.Context, req *dto.Reser
 
 				logs.Error(err)
 				return errs.NewUnexpectedError()
+			}
+		}
+
+		// หลังตัด stock สำเร็จทุก item → emit StockUpdatedEvent (absolute) ต่อ variant
+		// เพื่อให้ catalog (read model) ลด stock บนหน้าเว็บตามจริง (key=ProductID → ordering ต่อสินค้า)
+		for _, item := range req.Items {
+			productID, newStock, err := s.cmdRepo.GetVariantStockInfo(txCtx, item.VariantID)
+			if err != nil {
+				logs.Error(err)
+				return errs.NewUnexpectedError()
+			}
+			stockEvt := &events.StockUpdatedEvent{
+				ProductID:  productID,
+				VariantID:  item.VariantID,
+				NewStock:   newStock,
+				OccurredAt: time.Now(),
+			}
+			if err := s.saveProductEvent(txCtx, productID, stockEvt); err != nil {
+				return err
 			}
 		}
 
@@ -543,23 +597,8 @@ func (s *productCommandService) ReserveStock(ctx context.Context, req *dto.Reser
 //   - Inbox Pattern ป้องกัน ReleaseStock ทำซ้ำ (เหตุ Kafka อาจส่ง event ซ้ำ)
 func (s *productCommandService) ReleaseStock(ctx context.Context, req *dto.ReserveStockReq) error {
 	return s.cmdRepo.RunInTx(ctx, func(txCtx context.Context) error {
-
-		/* Load Aggregate Root (เพื่อเช็คว่ามีสินค้านี้จริงไหม)
-		 product, err := s.cmdRepo.GetProductByID(ctx, req.ProductID)
-
-		 if err != nil {
-		 	logs.Error(err)
-		 	return errs.NewUnexpectedError()
-		 }
-
-		 if product == nil {
-			logs.Error(err)
-			return errs.NewNotFoundError(fmt.Sprintf("product with ID %d not found", req.ProductID))
-		}
-
-		 Idempotency Check (Inbox Pattern)
-		 เราต้องเช็ค MessageID ของ Event Cancel/Release นี้ (ไม่ใช่ MessageID ตอนจอง คนละ ID กัน) */
-
+		/*Idempotency Check (Inbox Pattern)
+		เราต้องเช็ค MessageID ของ Event Cancel/Release นี้ (ไม่ใช่ MessageID ตอนจอง คนละ ID กัน) */
 		processed, err := s.inboxRepo.HasProcessedMessage(txCtx, req.MessageID)
 
 		if err != nil {
@@ -581,6 +620,24 @@ func (s *productCommandService) ReleaseStock(ctx context.Context, req *dto.Reser
 
 				logs.Error(err)
 				return errs.NewUnexpectedError()
+			}
+		}
+
+		// หลังคืน stock สำเร็จ → emit StockUpdatedEvent (absolute) ต่อ variant → catalog เพิ่ม stock กลับ
+		for _, item := range req.Items {
+			productID, newStock, err := s.cmdRepo.GetVariantStockInfo(txCtx, item.VariantID)
+			if err != nil {
+				logs.Error(err)
+				return errs.NewUnexpectedError()
+			}
+			stockEvt := &events.StockUpdatedEvent{
+				ProductID:  productID,
+				VariantID:  item.VariantID,
+				NewStock:   newStock,
+				OccurredAt: time.Now(),
+			}
+			if err := s.saveProductEvent(txCtx, productID, stockEvt); err != nil {
+				return err
 			}
 		}
 

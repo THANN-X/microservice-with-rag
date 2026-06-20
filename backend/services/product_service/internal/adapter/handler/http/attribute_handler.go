@@ -159,7 +159,7 @@ func (h *attributeHandler) DeleteAttribute(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Param id path int true "Attribute ID"
 // @Param body body dto.CreateAttributeValueReq true "Attribute value data"
-// @Success 201 {object} map[string]string "Attribute value created successfully"
+// @Success 201 {object} dto.AttributeValueRes "Attribute value created successfully"
 // @Failure 400 {object} map[string]interface{} "Validation error"
 // @Failure 404 {object} map[string]interface{} "Attribute not found"
 // @Router /attributes/admin/{id}/values [post]
@@ -181,10 +181,11 @@ func (h *attributeHandler) CreateAttributeValue(c *fiber.Ctx) error {
 		return httpcore.HandleError(c, errs.NewValidationError(err.Error()))
 	}
 
-	if err := h.cmdService.CreateAttributeValue(c.UserContext(), req); err != nil {
+	val, err := h.cmdService.CreateAttributeValue(c.UserContext(), req)
+	if err != nil {
 		return httpcore.HandleError(c, err)
 	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Attribute value created successfully"})
+	return c.Status(fiber.StatusCreated).JSON(val)
 }
 
 // DELETE /attributes/admin/:id/values/:valueId

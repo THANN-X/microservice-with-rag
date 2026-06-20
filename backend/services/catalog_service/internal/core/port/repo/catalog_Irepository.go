@@ -3,6 +3,7 @@ package repo
 import (
 	"catalog_service/internal/core/domain"
 	"context"
+	"time"
 )
 
 // CatalogWriteRepository — Write Side
@@ -15,19 +16,29 @@ type CatalogWriteRepository interface {
 	UpdateInfo(ctx context.Context, productID uint, name, description string) error
 
 	// UpdateVariantPrice อัปเดตราคาของ variant ที่ระบุ (ใช้ MongoDB arrayFilters)
-	UpdateVariantPrice(ctx context.Context, productID uint, variantID uint, newPrice float64) error
+	// occurredAt ใช้เป็น Timestamp Guard — อัปเดตเฉพาะเมื่อ event ใหม่กว่าค่าที่เก็บไว้
+	UpdateVariantPrice(ctx context.Context, productID uint, variantID uint, newPrice float64, occurredAt time.Time) error
 
 	// AddVariant เพิ่ม variant ใหม่เข้า document
 	AddVariant(ctx context.Context, productID uint, variant domain.EmbeddedVariant) error
 
 	// UpdateVariantStock อัปเดต stock ของ variant ที่ระบุ
-	UpdateVariantStock(ctx context.Context, productID uint, variantID uint, newStock int) error
+	// occurredAt ใช้เป็น Timestamp Guard — อัปเดตเฉพาะเมื่อ event ใหม่กว่าค่าที่เก็บไว้
+	UpdateVariantStock(ctx context.Context, productID uint, variantID uint, newStock int, occurredAt time.Time) error
 
 	// UpdateProductImages แทนที่ image list ระดับ product
 	UpdateProductImages(ctx context.Context, productID uint, imageURLs []string) error
-
-	// UpdateVariantImages แทนที่ image list ของ variant ที่ระบุ
 	UpdateVariantImages(ctx context.Context, productID uint, variantID uint, imageURLs []string) error
+
+	// UpdateCategories แทนที่ category list ทั้งหมดของ product (ใช้ filter สินค้าตามหมวดหมู่)
+	UpdateCategories(ctx context.Context, productID uint, categories []domain.EmbeddedCategory) error
+
+	// SetActive ตั้ง is_active ระดับ product (ซ่อน/แสดงสินค้าบนหน้าเว็บ)
+	SetActive(ctx context.Context, productID uint, active bool) error
+
+	// SetVariantActive ตั้ง is_active ระดับ variant ที่ระบุ
+	// occurredAt ใช้เป็น Timestamp Guard — อัปเดตเฉพาะเมื่อ event ใหม่กว่าค่าที่เก็บไว้
+	SetVariantActive(ctx context.Context, productID uint, variantID uint, active bool, occurredAt time.Time) error
 
 	// MarkDeleted soft-delete — ตั้ง is_deleted=true, is_active=false
 	MarkDeleted(ctx context.Context, productID uint) error

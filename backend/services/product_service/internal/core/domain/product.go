@@ -93,10 +93,35 @@ func NewProduct(name, description string, imageURLs []string, variants []Product
 //   - หลัง r.GetDB(ctx).Create(productEntity) DB assign ID กลับมา
 //   - SyncIDToEvents() ต้องเรียกหลัง Create เพื่อ inject ProductID ที่ถูกต้องลงใน event
 func (p *Product) SyncIDToEvents() {
+	// variant events ถูก raise เรียงตามลำดับ p.Variants ใน MarkAsCreated
+	// → จับคู่ VariantID จริง (ที่ DB assign กลับเข้า p.Variants แล้ว) ตาม index เดียวกัน
+	variantIdx := 0
 	for _, evt := range p.domainEvents {
 		switch e := evt.(type) {
 		case *events.ProductCreatedEvent:
 			e.ProductID = p.ID
+		case *events.ProductVariantAddedEvent:
+			e.ProductID = p.ID
+			if variantIdx < len(p.Variants) {
+				v := p.Variants[variantIdx]
+				e.VariantID = v.ID
+				// rebuild attributes จาก variant ที่ hydrate Name/Value แล้ว (ตอน raise event ยังมีแค่ ID)
+				attrs := make([]events.AttributeKV, len(v.Attributes))
+				for i, a := range v.Attributes {
+					attrs[i] = events.AttributeKV{Key: a.Name, Value: a.Value}
+				}
+				e.Attributes = attrs
+			}
+			variantIdx++
+		case *events.ProductImagesUpdatedEvent:
+			e.ProductID = p.ID
+		case *events.ProductCategoriesUpdatedEvent:
+			e.ProductID = p.ID
+			cats := make([]events.CategoryKV, len(p.Categories))
+			for i, c := range p.Categories {
+				cats[i] = events.CategoryKV{CategoryID: c.ID, Name: c.Name, Slug: c.Slug}
+			}
+			e.Categories = cats
 		}
 	}
 }
@@ -128,6 +153,44 @@ func (p *Product) MarkAsCreated(createdBy uint) {
 		CreatedBy:   p.CreatedBy,
 		OccurredAt:  time.Now(),
 	})
+
+	// WHY raise variant/image events ตรงนี้ด้วย?
+	//   - ProductCreatedEvent ส่งเฉพาะข้อมูล product ระดับบน (ไม่มี variants/images)
+	//   - catalog_service (read model) build document จาก event แยกชนิด → ต้องได้ variant + image event ด้วย
+	//   - ถ้าไม่ส่ง สินค้าที่สร้างใหม่จะโผล่ใน catalog แบบไม่มี variant (price = 0) และไม่มีรูป
+	//   - AggregateID ของทุก event = ProductID (ดู SaveDomainEvents) → ลำดับใน Kafka partition เดียวกันถูกการันตี
+	// NOTE: ProductID/VariantID ยังเป็น 0 ตอนนี้ → SyncIDToEvents() inject ค่าจริงหลัง DB insert
+	for _, v := range p.Variants {
+		attrs := make([]events.AttributeKV, len(v.Attributes))
+		for i, a := range v.Attributes {
+			attrs[i] = events.AttributeKV{Key: a.Name, Value: a.Value}
+		}
+		p.addDomainEvent(&events.ProductVariantAddedEvent{
+			Sku:        v.Sku,
+			Name:       v.NameVariant,
+			Price:      v.Price,
+			Stock:      v.Stock,
+			Attributes: attrs,
+			OccurredAt: time.Now(),
+		})
+	}
+
+	if len(p.ImageURLs) > 0 {
+		p.addDomainEvent(&events.ProductImagesUpdatedEvent{
+			ImageURLs:  p.ImageURLs,
+			UpdatedBy:  createdBy,
+			OccurredAt: time.Now(),
+		})
+	}
+
+	// categories ใช้สำหรับ filter ใน catalog → ต้อง sync ด้วย
+	// NOTE: ตอนนี้ p.Categories อาจมีแค่ ID (ยังไม่ได้ load Name/Slug)
+	//       SyncIDToEvents() จะเติม snapshot จริงหลัง repo โหลด Name/Slug จาก DB
+	if len(p.Categories) > 0 {
+		p.addDomainEvent(&events.ProductCategoriesUpdatedEvent{
+			OccurredAt: time.Now(),
+		})
+	}
 }
 
 // MarkAsDeleted set DeletedAt (soft delete) และ raise ProductDeletedEvent
@@ -166,6 +229,15 @@ func (p *Product) UpdateInfo(name, description string) error {
 	return nil
 }
 
+// RaiseCategoriesUpdated emits a categories-updated event so the read model (catalog)
+// can resync the product's category list. The event is enriched with Name/Slug in the
+// repository (via SyncIDToEvents) once category rows are loaded.
+func (p *Product) RaiseCategoriesUpdated() {
+	p.addDomainEvent(&events.ProductCategoriesUpdatedEvent{
+		OccurredAt: time.Now(),
+	})
+}
+
 // UpdateVariantPrice replaces the price on the specified variant and raises a price-changed event.
 func (p *Product) UpdateVariantPrice(variantID uint, newPrice float64) error {
 	if newPrice < 0 {
@@ -185,6 +257,7 @@ func (p *Product) UpdateVariantPrice(variantID uint, newPrice float64) error {
 
 			p.addDomainEvent(&events.ProductPriceChangedEvent{
 				ProductID:  p.ID,
+				VariantID:  variantID,
 				OldPrice:   oldPrice,
 				NewPrice:   newPrice,
 				OccurredAt: time.Now(),

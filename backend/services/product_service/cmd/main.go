@@ -199,7 +199,7 @@ func main() {
 
 	// ให้เซิร์ฟเวอร์รันใน Goroutine เพื่อไม่ให้ block
 	go func() {
-		port := os.Getenv("PORT")
+		port := os.Getenv("APP_PORT")
 		if port == "" {
 			port = "3002"
 		}

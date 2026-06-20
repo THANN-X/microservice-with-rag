@@ -119,13 +119,14 @@ func (h *productMessageHandler) handleOrderCreated(ctx context.Context, msg *sar
 		return fmt.Errorf("unmarshal ORDER_CREATED: %w", err)
 	}
 
-	// WHY ใช้ msg.Key เป็น MessageID?
-	//   - msg.Key = OrderID ที่ order_service ตั้งไว้ใน outbox → idempotency ระดับ Order
-	//   - ป้องกัน reserve stock ซ้ำแม้ message จะ redeliver กี่ครั้งก็ตาม
-	//   - Fallback เป็น topic:partition:offset ถ้า Key ว่าง (defensive)
-	messageID := string(msg.Key)
+	// WHY อ่าน EventID จาก Header แทน msg.Key?
+	//   - Kafka Key = AggregateID (OrderID) ใช้เพื่อรับประกัน partition ordering เท่านั้น
+	//   - ORDER_CREATED + ORDER_CANCELLED มี Key เดียวกัน (OrderID) → ใช้เป็น inbox key ไม่ได้
+	//   - EventID ใน Header = outbox event UUID ที่ unique ต่อ event → inbox แยกออกจากกันได้
+	//   - Fallback: offset-based ID ถ้าไม่มี header (backward compatible)
+	 messageID := getHeaderValue(msg.Headers, "EventID")
 	if messageID == "" {
-		logs.Warn(fmt.Sprintf("product: ORDER_CREATED has empty Key, falling back to offset-based messageID. topic=%s partition=%d offset=%d",
+		logs.Warn(fmt.Sprintf("product: ORDER_CREATED has no EventID header, falling back to offset-based messageID. topic=%s partition=%d offset=%d",
 			msg.Topic, msg.Partition, msg.Offset))
 		messageID = fmt.Sprintf("%s:%d:%d", msg.Topic, msg.Partition, msg.Offset)
 	}
@@ -162,12 +163,14 @@ func (h *productMessageHandler) handleOrderCancelled(ctx context.Context, msg *s
 		return fmt.Errorf("unmarshal ORDER_CANCELLED: %w", err)
 	}
 
-	// WHY ใช้ msg.Key เป็น MessageID?
-	//   - msg.Key = OrderID เดิม → idempotency ระดับ Order (release ซ้ำไม่ได้)
-	//   - Fallback เป็น topic:partition:offset ถ้า Key ว่าง (defensive)
-	messageID := string(msg.Key)
+	// WHY อ่าน EventID จาก Header แทน msg.Key?
+	//   - Kafka Key = AggregateID (OrderID) ใช้เพื่อรับประกัน partition ordering เท่านั้น
+	//   - ORDER_CREATED + ORDER_CANCELLED มี Key เดียวกัน → ใช้เป็น inbox key ไม่ได้
+	//   - EventID ใน Header = outbox event UUID ที่ unique ต่อ event
+	//   - Fallback: offset-based ID ถ้าไม่มี header (backward compatible)
+	 messageID := getHeaderValue(msg.Headers, "EventID")
 	if messageID == "" {
-		logs.Warn(fmt.Sprintf("product: ORDER_CANCELLED has empty Key, falling back to offset-based messageID. topic=%s partition=%d offset=%d",
+		logs.Warn(fmt.Sprintf("product: ORDER_CANCELLED has no EventID header, falling back to offset-based messageID. topic=%s partition=%d offset=%d",
 			msg.Topic, msg.Partition, msg.Offset))
 		messageID = fmt.Sprintf("%s:%d:%d", msg.Topic, msg.Partition, msg.Offset)
 	}

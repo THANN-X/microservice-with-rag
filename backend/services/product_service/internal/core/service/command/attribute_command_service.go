@@ -58,19 +58,23 @@ func (s *attributeCommandService) DeleteAttribute(ctx context.Context, id uint) 
 	return s.cmdRepo.DeleteAttribute(ctx, id)
 }
 
-func (s *attributeCommandService) CreateAttributeValue(ctx context.Context, req *dto.CreateAttributeValueReq) error {
+func (s *attributeCommandService) CreateAttributeValue(ctx context.Context, req *dto.CreateAttributeValueReq) (*dto.AttributeValueRes, error) {
 	_, err := s.queryRepo.GetAttributeByID(ctx, req.AttributeID)
 	if err != nil {
 		if errors.Is(err, domain.ErrRecordNotFound) {
-			return errs.NewNotFoundError("Attribute not found")
+			return nil, errs.NewNotFoundError("Attribute not found")
 		}
-		return errs.NewUnexpectedError()
+		return nil, errs.NewUnexpectedError()
 	}
 	val := &domain.AttributeValue{
 		AttributeID: req.AttributeID,
 		Value:       req.Value,
 	}
-	return s.cmdRepo.CreateAttributeValue(ctx, val)
+	if err := s.cmdRepo.CreateAttributeValue(ctx, val); err != nil {
+		return nil, err
+	}
+	// คืนค่าที่สร้าง (พร้อม ID ที่ DB generate) เพื่อให้ frontend append ลง state ได้โดยไม่ต้อง refetch
+	return &dto.AttributeValueRes{ID: val.ID, Value: val.Value}, nil
 }
 
 func (s *attributeCommandService) DeleteAttributeValue(ctx context.Context, id uint) error {

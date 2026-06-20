@@ -108,6 +108,34 @@ func (h *productEventHandler) Handle(ctx context.Context, msg *sarama.ConsumerMe
 		}
 		return h.cmdService.HandleProductVariantImagesUpdated(ctx, messageID, &evt)
 
+	case "PRODUCT_CATEGORIES_UPDATED":
+		var evt events.ProductCategoriesUpdatedEvent
+		if err := json.Unmarshal(msg.Value, &evt); err != nil {
+			return fmt.Errorf("unmarshal PRODUCT_CATEGORIES_UPDATED: %w", err)
+		}
+		return h.cmdService.HandleProductCategoriesUpdated(ctx, messageID, &evt)
+
+	case "PRODUCT_ACTIVE_CHANGED":
+		var evt events.ProductActiveChangedEvent
+		if err := json.Unmarshal(msg.Value, &evt); err != nil {
+			return fmt.Errorf("unmarshal PRODUCT_ACTIVE_CHANGED: %w", err)
+		}
+		return h.cmdService.HandleProductActiveChanged(ctx, messageID, &evt)
+
+	case "PRODUCT_VARIANT_ACTIVE_CHANGED":
+		var evt events.ProductVariantActiveChangedEvent
+		if err := json.Unmarshal(msg.Value, &evt); err != nil {
+			return fmt.Errorf("unmarshal PRODUCT_VARIANT_ACTIVE_CHANGED: %w", err)
+		}
+		return h.cmdService.HandleProductVariantActiveChanged(ctx, messageID, &evt)
+
+	case "STOCK_UPDATED":
+		var evt events.StockUpdatedEvent
+		if err := json.Unmarshal(msg.Value, &evt); err != nil {
+			return fmt.Errorf("unmarshal STOCK_UPDATED: %w", err)
+		}
+		return h.cmdService.HandleStockUpdated(ctx, messageID, &evt)
+
 	default:
 		// STOCK_RESERVED, STOCK_RELEASED, ORDER_* ไม่เกี่ยวกับ catalog — ข้ามไป
 		return nil

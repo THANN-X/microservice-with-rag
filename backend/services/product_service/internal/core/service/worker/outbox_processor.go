@@ -81,17 +81,12 @@ func (p *OutboxProcessor) processBatch(ctx context.Context) {
 		headers := map[string]string{
 			"EventType": msg.EventType, // สำคัญ! ใส่ type ไว้ให้ Consumer อีกฝั่งแกะ
 			"Source":    "product-service",
+			// EventID = outbox event UUID ใช้เป็น Inbox idempotency key ใน consumer
+			// Kafka key = AggregateID ยังคงเดิม (รับประกัน partition ordering)
+			"EventID": msg.ID,
 		}
 
-		/*กำหนด Topic
-		อาจจะเขียน logic แยก Topic ตรงนี้ หรือจะเก็บ Topic ไว้ใน DB Outbox เลยก็ได้
-		สมมติ: ถ้า AggregateType เป็น STOCK ให้ส่ง topic "stock.events" ถ้า PRODUCT ส่ง "product.events"
-		topic := "product.events"
-		if msg.AggregateType == "STOCK" {
-			topic = "stock.events"
-		}*/
-
-		// ส่งเข้า Kafka
+		// Kafka key = AggregateID (รับประกัน partition ordering)
 		err := p.producer.Send(msg.Topic, msg.AggregateID, []byte(msg.Payload), headers)
 
 		if err != nil {

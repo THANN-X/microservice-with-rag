@@ -31,6 +31,9 @@ type ProductCommandRepository interface {
 	DecreaseStock(ctx context.Context, variantID uint, qty int) error
 	IncreaseStock(ctx context.Context, variantID uint, qty int) error
 
+	// GetVariantStockInfo อ่าน product_id + stock ปัจจุบันของ variant (ใช้หลัง decrease/increase เพื่อ emit StockUpdatedEvent แบบ absolute)
+	GetVariantStockInfo(ctx context.Context, variantID uint) (productID uint, stock int, err error)
+
 	SaveDomainEvents(ctx context.Context, product *domain.Product) error
 }
 

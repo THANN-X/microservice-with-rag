@@ -70,9 +70,98 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 	product.ID = productEntity.ID
 	product.CreatedAt = productEntity.CreatedAt
 	product.UpdatedAt = productEntity.UpdatedAt
+
+	// sync DB-assigned variant IDs กลับเข้า domain (GORM create variants ตามลำดับ slice เดิม)
+	// → SyncIDToEvents() จะ inject VariantID ที่ถูกต้องลงใน ProductVariantAddedEvent ได้
+	for i := range product.Variants {
+		if i < len(productEntity.Variants) {
+			product.Variants[i].ID = productEntity.Variants[i].ID
+		}
+	}
+
+	// โหลด Name/Slug ของ categories (ตอน create มีแค่ ID) เพื่อให้ ProductCategoriesUpdatedEvent
+	// ส่ง snapshot ครบ → catalog embed แล้ว filter ตาม category ได้
+	r.loadCategoryNames(ctx, product)
+
+	// โหลด Name/Value ของ variant attributes (ตอน create มีแค่ AttributeValue ID) เพื่อให้
+	// ProductVariantAddedEvent ส่ง attribute snapshot ครบ → catalog แสดงปุ่มตัวเลือก variant ได้
+	ptrs := make([]*domain.ProductVariant, len(product.Variants))
+	for i := range product.Variants {
+		ptrs[i] = &product.Variants[i]
+	}
+	r.hydrateVariantAttributes(ctx, ptrs)
+
 	product.SyncIDToEvents() // inject real ID เข้าไปใน domain events ที่สร้างไว้ก่อน insert
 
 	return r.SaveDomainEvents(ctx, product)
+}
+
+// loadCategoryNames hydrates Name/Slug on product.Categories (which may carry only IDs)
+// so that ProductCategoriesUpdatedEvent can ship a complete snapshot to the catalog read model.
+func (r *productRepository) loadCategoryNames(ctx context.Context, product *domain.Product) {
+	if len(product.Categories) == 0 {
+		return
+	}
+	ids := make([]uint, len(product.Categories))
+	for i, c := range product.Categories {
+		ids[i] = c.ID
+	}
+	var catEntities []entity.CategoryEntity
+	if err := r.GetDB(ctx).Where("id IN ?", ids).Find(&catEntities).Error; err != nil {
+		return
+	}
+	byID := make(map[uint]entity.CategoryEntity, len(catEntities))
+	for _, c := range catEntities {
+		byID[c.ID] = c
+	}
+	for i := range product.Categories {
+		if c, ok := byID[product.Categories[i].ID]; ok {
+			product.Categories[i].Name = c.Name
+			product.Categories[i].Slug = c.Slug
+		}
+	}
+}
+
+// hydrateVariantAttributes เติม Name/Value ลงใน variant.Attributes ที่มีแค่ AttributeValue ID
+// WHY ต้องมี? — ตอนสร้าง/เพิ่ม variant domain object มีแค่ ID (ใช้ผูก many2many join table)
+//
+//	แต่ ProductVariantAddedEvent ต้องส่ง Name/Value จริงไปให้ catalog read model
+//	ถ้าไม่ hydrate → catalog เก็บ attribute เป็น {key:"", value:""} → ปุ่มตัวเลือก variant ว่างเปล่า
+func (r *productRepository) hydrateVariantAttributes(ctx context.Context, variants []*domain.ProductVariant) {
+	// รวบรวม AttributeValue ID ทั้งหมดจากทุก variant (dedupe)
+	idSet := make(map[uint]struct{})
+	for _, v := range variants {
+		for _, a := range v.Attributes {
+			if a.ID != 0 {
+				idSet[a.ID] = struct{}{}
+			}
+		}
+	}
+	if len(idSet) == 0 {
+		return
+	}
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+
+	var avEntities []entity.AttributeValueEntity
+	if err := r.GetDB(ctx).Preload("Attribute").Where("id IN ?", ids).Find(&avEntities).Error; err != nil {
+		return
+	}
+	byID := make(map[uint]entity.AttributeValueEntity, len(avEntities))
+	for _, av := range avEntities {
+		byID[av.ID] = av
+	}
+
+	for _, v := range variants {
+		for j := range v.Attributes {
+			if av, ok := byID[v.Attributes[j].ID]; ok {
+				v.Attributes[j].Value = av.Value
+				v.Attributes[j].Name = av.Attribute.Name
+			}
+		}
+	}
 }
 
 func (r *productRepository) GetProductByID(ctx context.Context, id uint) (*domain.Product, error) {
@@ -130,6 +219,11 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 
 	product.UpdatedAt = productEntity.UpdatedAt
 
+	// categories อาจเปลี่ยนตอน update → hydrate Name/Slug แล้ว inject ลง ProductCategoriesUpdatedEvent
+	// (ถ้า service ได้ raise event ไว้) เพื่อให้ catalog resync ได้ครบ
+	r.loadCategoryNames(ctx, product)
+	product.SyncIDToEvents()
+
 	return r.SaveDomainEvents(ctx, product)
 }
 
@@ -164,6 +258,10 @@ func (r *productRepository) AddVariant(ctx context.Context, variant *domain.Prod
 
 	// Sync ID กลับไป Domain → Service จะส่งต่อ ID นี้ให้ AddNewVariant() raise event
 	variant.ID = vEntity.ID
+
+	// เติม Name/Value ของ attributes (variant ที่ส่งมามีแค่ AttributeValue ID)
+	// เพื่อให้ ProductVariantAddedEvent ส่ง attribute snapshot ครบให้ catalog
+	r.hydrateVariantAttributes(ctx, []*domain.ProductVariant{variant})
 
 	return nil
 }
@@ -253,6 +351,19 @@ func (r *productRepository) IncreaseStock(ctx context.Context, variantID uint, q
 	}
 
 	return nil
+}
+
+// GetVariantStockInfo อ่าน product_id + stock ปัจจุบันของ variant — ใช้หลังตัด/คืน stock
+// เพื่อ emit StockUpdatedEvent แบบ absolute (catalog เอาไป set ทับ)
+func (r *productRepository) GetVariantStockInfo(ctx context.Context, variantID uint) (uint, int, error) {
+	var v entity.ProductVariantEntity
+	if err := r.GetDB(ctx).Select("product_id", "stock").Where("id = ?", variantID).First(&v).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, 0, domain.ErrRecordNotFound
+		}
+		return 0, 0, err
+	}
+	return v.ProductID, v.Stock, nil
 }
 
 func (r *productRepository) SaveDomainEvents(ctx context.Context, agg *domain.Product) error {

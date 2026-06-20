@@ -10,7 +10,7 @@ type AttributeCommandService interface {
 	UpdateAttribute(ctx context.Context, req *dto.UpdateAttributeReq) error
 	DeleteAttribute(ctx context.Context, id uint) error
 
-	CreateAttributeValue(ctx context.Context, req *dto.CreateAttributeValueReq) error
+	CreateAttributeValue(ctx context.Context, req *dto.CreateAttributeValueReq) (*dto.AttributeValueRes, error)
 	DeleteAttributeValue(ctx context.Context, id uint) error
 }
 
