@@ -60,6 +60,7 @@ go.work.sum
 
 
 # --- Nginx ---
+nginx/
 # logs ต่างๆ ไม่ควรเอาขึ้น
 *.log
 access.log
