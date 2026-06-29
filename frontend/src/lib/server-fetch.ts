@@ -90,12 +90,16 @@ export async function serverFetchProducts(params: {
   limit?: number;
   search?: string;
   category?: string;
+  categoryIds?: number[];
 }): Promise<ProductListResponse> {
   const q = new URLSearchParams();
-  if (params.page)     q.set("page",        String(params.page));
-  if (params.limit)    q.set("limit",       String(params.limit));
-  if (params.search)   q.set("search",      params.search);
-  if (params.category) q.set("category_id", params.category);
+  if (params.page)        q.set("page",         String(params.page));
+  if (params.limit)       q.set("limit",        String(params.limit));
+  if (params.search)      q.set("search",       params.search);
+  if (params.category)    q.set("category_id",  params.category);
+  if (params.categoryIds && params.categoryIds.length > 0) {
+    q.set("category_ids", params.categoryIds.join(","));
+  }
 
   try {
     const res = await fetch(`${BFF}/api/catalog/products?${q}`, {

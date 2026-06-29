@@ -113,14 +113,14 @@ body {
   -webkit-backdrop-filter: blur(20px);
 }
 
-/* ── Editorial gradient ── */
+/* ── Editorial solid color ── */
 .editorial-gradient {
-  background: linear-gradient(135deg, #00675f 0%, #56f1e0 100%);
+  background-color: var(--color-primary);
 }
 
-/* ── Primary button gradient ── */
+/* ── Primary button solid color ── */
 .gradient-primary {
-  background: linear-gradient(135deg, #00675f 0%, #56f1e0 100%);
+  background-color: var(--color-primary);
 }
 
 /* ── Ambient shadow utility ── */

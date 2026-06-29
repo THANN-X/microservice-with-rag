@@ -1,12 +1,13 @@
 package dto
 
 type SearchProductsReq struct {
-	Page       int    `query:"page"`
-	Limit      int    `query:"limit"`
-	Search     string `query:"search"`
-	CategoryID uint   `query:"category_id"`
-	SortBy     string `query:"sort_by"`
-	Order      string `query:"order"`
+	Page        int    `query:"page"`
+	Limit       int    `query:"limit"`
+	Search      string `query:"search"`
+	CategoryID  uint   `query:"category_id"`
+	CategoryIDs string `query:"category_ids"`
+	SortBy      string `query:"sort_by"`
+	Order       string `query:"order"`
 }
 
 type CatalogProductRes struct {

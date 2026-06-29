@@ -23,10 +23,51 @@ export default async function ProductsPage({
   const search = resolvedParams.search || "";
   const category = resolvedParams.category || "";
 
-  const [productsRes, categories] = await Promise.all([
-    serverFetchProducts({ page, limit: ITEMS_PER_PAGE, search: search || undefined, category: category || undefined }),
-    serverFetchCategories(),
-  ]);
+  const categories = await serverFetchCategories();
+
+  // Helper to find category and collect all descendant IDs recursively
+  const getDescendantIds = (nodes: any[], targetId: number): number[] => {
+    const findCategoryNode = (treeNodes: any[], id: number): any | null => {
+      for (const node of treeNodes) {
+        if (node.id === id) return node;
+        if (node.children && node.children.length > 0) {
+          const found = findCategoryNode(node.children, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const collectAllIds = (node: any): number[] => {
+      const ids = [node.id];
+      if (node.children && node.children.length > 0) {
+        for (const child of node.children) {
+          ids.push(...collectAllIds(child));
+        }
+      }
+      return ids;
+    };
+
+    const targetNode = findCategoryNode(nodes, targetId);
+    if (!targetNode) return [targetId];
+    return collectAllIds(targetNode);
+  };
+
+  let categoryIds: number[] | undefined;
+  if (category) {
+    const targetId = Number(category);
+    if (!isNaN(targetId)) {
+      categoryIds = getDescendantIds(categories, targetId);
+    }
+  }
+
+  const productsRes = await serverFetchProducts({
+    page,
+    limit: ITEMS_PER_PAGE,
+    search: search || undefined,
+    category: category || undefined,
+    categoryIds,
+  });
 
   const products = productsRes.items ?? [];
   const total = productsRes.total ?? 0;

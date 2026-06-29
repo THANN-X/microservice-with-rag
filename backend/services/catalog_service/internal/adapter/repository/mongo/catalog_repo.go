@@ -409,7 +409,9 @@ func (r *catalogRepository) FindAll(ctx context.Context, filter domain.ProductFi
 
 	query := bson.M{"is_deleted": false, "is_active": true}
 
-	if filter.CategoryID > 0 {
+	if len(filter.CategoryIDs) > 0 {
+		query["categories"] = bson.M{"$elemMatch": bson.M{"category_id": bson.M{"$in": filter.CategoryIDs}}}
+	} else if filter.CategoryID > 0 {
 		query["categories"] = bson.M{"$elemMatch": bson.M{"category_id": filter.CategoryID}}
 	}
 	if filter.Search != "" {

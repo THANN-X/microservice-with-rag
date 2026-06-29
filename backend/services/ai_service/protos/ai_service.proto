@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package ai_service;
+
+option go_package = "bff/internal/adapter/client/aipb";
+
+service AIChatService {
+  rpc Chat(ChatRequest) returns (stream ChatResponse);
+}
+
+message ChatRequest {
+  string message = 1;
+  string session_id = 2;
+}
+
+message ChatResponse {
+  string event_type = 1; // e.g., "chunk", "products", "done", "error"
+  string text_content = 2;
+  repeated uint32 product_ids = 3;
+}

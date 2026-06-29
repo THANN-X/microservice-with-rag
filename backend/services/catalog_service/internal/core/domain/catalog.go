@@ -43,12 +43,13 @@ type EmbeddedCategory struct {
 
 // ProductFilter กำหนด query params สำหรับ listing / search
 type ProductFilter struct {
-	Page       int
-	Limit      int
-	Search     string
-	CategoryID uint
-	SortBy     string
-	Order      string
+	Page        int
+	Limit       int
+	Search      string
+	CategoryID  uint
+	CategoryIDs []uint
+	SortBy      string
+	Order       string
 }
 
 // InboxMessage ใช้เก็บ messageID ที่ consume แล้วเพื่อ enforce idempotency
