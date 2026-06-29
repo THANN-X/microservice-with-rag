@@ -15,6 +15,8 @@ import (
 	"catalog_service/internal/core/port/service/dto"
 	"context"
 	"math"
+	"strconv"
+	"strings"
 )
 
 type catalogQueryService struct {
@@ -41,13 +43,24 @@ func (s *catalogQueryService) SearchProducts(ctx context.Context, req *dto.Searc
 		limit = 100
 	}
 
+	var categoryIDs []uint
+	if req.CategoryIDs != "" {
+		parts := strings.Split(req.CategoryIDs, ",")
+		for _, p := range parts {
+			if id, err := strconv.ParseUint(strings.TrimSpace(p), 10, 64); err == nil {
+				categoryIDs = append(categoryIDs, uint(id))
+			}
+		}
+	}
+
 	filter := domain.ProductFilter{
-		Page:       page,
-		Limit:      limit,
-		Search:     req.Search,
-		CategoryID: req.CategoryID,
-		SortBy:     req.SortBy,
-		Order:      req.Order,
+		Page:        page,
+		Limit:       limit,
+		Search:      req.Search,
+		CategoryID:  req.CategoryID,
+		CategoryIDs: categoryIDs,
+		SortBy:      req.SortBy,
+		Order:       req.Order,
 	}
 
 	products, total, err := s.readRepo.FindAll(ctx, filter)
