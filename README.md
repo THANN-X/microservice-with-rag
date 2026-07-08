@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛍️ Andaman Breeze — Microservices E-Commerce with RAG AI Assistant
+# 🛍️ Ananta — Microservices E-Commerce with RAG AI Assistant
 
 **แพลตฟอร์มร้านค้าออนไลน์แบบ Event-Driven Microservices พร้อมผู้ช่วย AI ค้นหาสินค้าด้วยเทคนิค RAG**
 
@@ -19,6 +19,8 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
 ![Qdrant](https://img.shields.io/badge/Qdrant-Vector_DB-DC244C?style=for-the-badge)
+
+![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
 </div>
 
@@ -43,7 +45,7 @@
 
 ## 🌊 Overview
 
-**Andaman Breeze** is a production-style e-commerce system decomposed into independent microservices that communicate through **REST**, **gRPC**, and **asynchronous Kafka events**. Beyond a standard storefront, it ships with an **AI shopping assistant** that answers product questions in natural language (including Thai) by retrieving real catalog data from a vector database and grounding a Large Language Model's response on it — a classic **Retrieval-Augmented Generation (RAG)** pipeline.
+**Ananta** is a production-style e-commerce system decomposed into independent microservices that communicate through **REST**, **gRPC**, and **asynchronous Kafka events**. Beyond a standard storefront, it ships with an **AI shopping assistant** that answers product questions in natural language (including Thai) by retrieving real catalog data from a vector database and grounding a Large Language Model's response on it — a classic **Retrieval-Augmented Generation (RAG)** pipeline.
 
 The project is a study in real-world distributed-system concerns: eventual consistency, transactional messaging, service isolation by database, and clean, testable architecture.
 
@@ -300,7 +302,7 @@ Once the stack is running, these dashboards are available:
 
 ## 📄 License
 
-This project is currently unlicensed. If you plan to share or open-source it, consider adding a `LICENSE` file (e.g. [MIT](https://choosealicense.com/licenses/mit/)) so others know how they may use it.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
 
