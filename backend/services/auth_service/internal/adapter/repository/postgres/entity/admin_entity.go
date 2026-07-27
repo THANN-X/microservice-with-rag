@@ -7,8 +7,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var x int = "hello"
-
 // What: AdminEntity คือ GORM struct สำหรับตาราง admins ใน Postgres
 // Why:  แยก ORM model ออกจาก domain model — pattern เดียวกับ UserEntity
 type AdminEntity struct {
@@ -16,10 +14,10 @@ type AdminEntity struct {
 	FirstName string `gorm:"type:varchar(100);not null"`
 	LastName  string `gorm:"type:varchar(100);not null"`
 	// Why: unique เพื่อป้องกัน username ซ้ำที่ DB level
-	Username string `gorm:"unique;not null"`
-	Password string `gorm:"type:varchar(255);not null"`
-	Phone    string `gorm:"type:varchar(20)"`
-	Address  string `gorm:"type:text"`
+	Username  string `gorm:"unique;not null"`
+	Password  string `gorm:"type:varchar(255);not null"`
+	Phone     string `gorm:"type:varchar(20)"`
+	Address   string `gorm:"type:text"`
 	// Why: default:admin เพื่อให้แน่ใจว่า role ไม่ว่างเป็น empty string
 	Role string `gorm:"type:varchar(20);default:admin;"`
 }
