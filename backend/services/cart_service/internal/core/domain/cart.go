@@ -36,6 +36,10 @@ type CartItemMeta struct {
 	ImageURL    string
 }
 
+// NewCart, AddItem, RemoveItem, UpdateItemQuantity, Clear ด้านล่างนี้ ปัจจุบัน "ไม่ได้ถูกเรียกใช้" ใน production code
+// เพราะ cart_command_service.go เลือก mutate ข้อมูลตรงที่ repo/DB layer เลย (UpsertItem, RemoveItem, SetItemQuantity, ClearCart)
+// แทนที่จะ load Cart เป็น in-memory aggregate แล้วเรียก method พวกนี้แก้ไขก่อน save กลับ
+// เก็บไว้เผื่อทำ testing แบบ in-memory repo (unit test domain logic โดยไม่ต้องต่อ DB จริง) — ยังไม่ได้ใช้ในตอนนี้
 // NewCart สร้างตะกร้าใหม่สำหรับ user
 func NewCart(userID uint) *Cart {
 	return &Cart{
