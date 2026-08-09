@@ -49,12 +49,34 @@ func (r *cartRepository) FindOrCreateByUserID(ctx context.Context, userID uint) 
 	}
 
 	// ไม่พบตะกร้า → สร้างใหม่ (Lazy Creation)
+	// WHY OnConflict DoNothing?
+	//   - First() กับ Create() เป็นคนละ statement → มีช่วง race ระหว่างสองคำสั่ง
+	//   - ถ้า 2 requests ของ user เดียวกันเข้ามาพร้อมกัน (กดปุ่มรัว / ยิงซ้อน)
+	//     ทั้งคู่จะได้ ErrRecordNotFound แล้วต่างคนต่าง Create
+	//   - user_id มี uniqueIndex → ตัวที่สองจะโดน duplicate key violation → 500
+	//   - DoNothing ทำให้ INSERT ที่ชนกันเงียบไปแทนที่จะ error
 	newCart := entity.CartEntity{
 		UserID: userID,
 		Items:  []entity.CartItemEntity{},
 	}
-	if err := r.GetDB(ctx).Create(&newCart).Error; err != nil {
-		return nil, err
+	result := r.GetDB(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}},
+		DoNothing: true,
+	}).Create(&newCart)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	// RowsAffected == 0 → แพ้ race (มีคนสร้างไปก่อนแล้ว) → newCart.ID ยังเป็น 0 ใช้ไม่ได้
+	// ต้อง re-query เพื่อดึงตะกร้าที่ผู้ชนะสร้างไว้
+	if result.RowsAffected == 0 {
+		if err := r.GetDB(ctx).
+			Preload("Items").
+			Where("user_id = ?", userID).
+			First(&cartE).Error; err != nil {
+			return nil, err
+		}
+		return cartE.ToCartDomain(), nil
 	}
 
 	return newCart.ToCartDomain(), nil
