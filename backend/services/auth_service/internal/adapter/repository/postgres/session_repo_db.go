@@ -26,8 +26,11 @@ func (r *sessionRepositoryDB) CreateSession(ctx context.Context, session *domain
 	// What: แปลง domain → entity ก่อนบันทึก
 	sessionEntity := entity.FromDomainSession(session)
 
-	if err := r.db.WithContext(ctx).Create(sessionEntity); err != nil {
-		return err.Error
+	// Why: ต้องเช็ค result.Error ไม่ใช่ตัว *gorm.DB — Create() คืน *gorm.DB ที่ไม่เคยเป็น nil
+	//      ถ้าเขียน `if err := Create(...); err != nil` จะ return ออกทุกครั้งแล้วข้าม sync ข้างล่าง
+	result := r.db.WithContext(ctx).Create(sessionEntity)
+	if result.Error != nil {
+		return result.Error
 	}
 
 	// What: sync ID ที่ DB generate กลับไป

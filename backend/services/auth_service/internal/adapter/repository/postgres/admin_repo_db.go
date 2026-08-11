@@ -25,14 +25,20 @@ func (r *adminRepositoryDB) CreateAdmin(ctx context.Context, admin *domain.Admin
 	// What: แปลง domain model → GORM entity
 	adminEntity := entity.ToAdminEntity(admin)
 
-	if err := r.db.WithContext(ctx).Create(adminEntity); err != nil {
-		return err.Error
+	// Why: ต้องเช็ค result.Error ไม่ใช่ตัว *gorm.DB — Create() คืน *gorm.DB ที่ไม่เคยเป็น nil
+	//      ถ้าเขียน `if err := Create(...); err != nil` จะ return ออกทุกครั้งแล้วข้าม sync ข้างล่าง
+	result := r.db.WithContext(ctx).Create(adminEntity)
+	if result.Error != nil {
+		return result.Error
 	}
 
 	// What: sync ค่าที่ DB generate กลับไปยัง domain object
 	admin.ID = adminEntity.ID
 	admin.CreatedAt = adminEntity.CreatedAt
 	admin.UpdatedAt = adminEntity.UpdatedAt
+	// Why: Role มาจาก `default:admin` ใน entity tag — GORM เติมค่าให้ตอน insert
+	//      ต้อง sync กลับ ไม่งั้น response คืน role เป็น empty string
+	admin.Role = adminEntity.Role
 
 	return nil
 }
