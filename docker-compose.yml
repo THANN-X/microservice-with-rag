@@ -107,6 +107,8 @@ services:
       - DB_USER_AUTH=${APP_DB_USER}
       - DB_PASSWORD_AUTH=${APP_DB_PASSWORD}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY}
 
   product-service-app:
     build:
