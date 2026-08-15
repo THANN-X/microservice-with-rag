@@ -121,6 +121,10 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# กฎ "lib/" ด้านบนมาจาก template ของ Python (ไว้กัน build artifact) แต่ไม่ได้ผูกกับ root
+# จึงไป match frontend/src/lib/ ซึ่งเป็น source code จริงด้วย — ไฟล์ใหม่ในนั้นจะถูกซ่อนเงียบ ๆ
+!frontend/src/lib/
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
