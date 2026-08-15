@@ -25,7 +25,8 @@ func NewAttributeRepository(db *gorm.DB) (port.AttributeCommandRepository, port.
 func (r *attributeRepository) CreateAttribute(ctx context.Context, attr *domain.Attribute) error {
 	e := entity.ToAttributeEntityFromDomain(attr)
 	if err := r.db.WithContext(ctx).Create(e).Error; err != nil {
-		return err
+		// DB มี uniqueIndex บน name → ชื่อ attribute ซ้ำจะโดนตรงนี้
+		return toDomainDBError(err)
 	}
 	// Sync ID ที่ DB generate กลับไปยัง Domain Object
 	// เพื่อให้ caller รู้ ID ของ record ที่เพิ่งสร้าง (ใช้ response หรือ log ต่อได้)
@@ -38,7 +39,7 @@ func (r *attributeRepository) UpdateAttribute(ctx context.Context, attr *domain.
 	// สอดคล้องกับ DDD pattern "load whole → modify via domain method → save whole"
 	// GORM จะไม่ overwrite created_at เพราะมัน autoCreateTime (set ได้เฉพาะตอน INSERT เท่านั้น)
 	e := entity.ToAttributeEntityFromDomain(attr)
-	return r.db.WithContext(ctx).Save(e).Error
+	return toDomainDBError(r.db.WithContext(ctx).Save(e).Error)
 }
 
 func (r *attributeRepository) DeleteAttribute(ctx context.Context, id uint) error {
@@ -51,7 +52,7 @@ func (r *attributeRepository) CreateAttributeValue(ctx context.Context, val *dom
 	e := entity.ToAttributeValueEntityFromDomain(val)
 	if err := r.db.WithContext(ctx).Create(e).Error; err != nil {
 		// DB มี uniqueIndex:(attribute_id, value) → ถ้าเพิ่ม value ซ้ำจะได้ error ตรงนี้
-		return err
+		return toDomainDBError(err)
 	}
 	val.ID = e.ID
 	return nil

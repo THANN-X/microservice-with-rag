@@ -6,6 +6,7 @@ import (
 	service "auth_service/internal/core/port/service"
 	dto "auth_service/internal/core/port/service/dto"
 	"context"
+	"errors"
 	"errs"
 	"logs"
 )
@@ -52,6 +53,10 @@ func (a *adminService) RegisterAdmin(ctx context.Context, newAdminReq *dto.Creat
 
 	if err := a.adminRepo.CreateAdmin(ctx, newAdminDomain); err != nil {
 		logs.Error(err)
+		// Why: เช็คซ้ำด้านบนมี race — คนที่สองจะมาชน unique index ตรงนี้ ต้องได้ 409 เหมือนกัน
+		if errors.Is(err, domain.ErrDuplicateKey) {
+			return nil, errs.NewConflictError("username already exists")
+		}
 		return nil, errs.NewUnexpectedError()
 	}
 

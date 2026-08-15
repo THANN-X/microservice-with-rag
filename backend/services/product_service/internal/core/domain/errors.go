@@ -15,4 +15,8 @@ var (
 	ErrNoDataModified   = errors.New("no data was modified") // ใช้แทน RowsAffected = 0 → หมายความว่า record มีอยู่แต่ไม่มีอะไรเปลี่ยน
 	ErrInternal         = errors.New("internal server error")
 	ErrEmptyProductName = errors.New("product name cannot be empty")
+
+	// ErrDuplicateKey ใช้เมื่อชนกับ unique constraint (เช่น category.slug, variant.sku)
+	// Service layer จะแปลงเป็น 409 Conflict — ไม่ใช่ 500 เพราะเป็นความผิดของ input ไม่ใช่ระบบพัง
+	ErrDuplicateKey = errors.New("duplicate key")
 )
