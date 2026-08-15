@@ -1,33 +1,44 @@
+// WHAT: แดชบอร์ดผู้ดูแล — ภาพรวมร้านค้า
+// NOTE: การ์ด/กราฟในหน้านี้แสดงเฉพาะตัวเลขที่มาจาก API จริงเท่านั้น
+//       ส่วนที่ backend ยังไม่มี endpoint ให้ (ยอดขายรายเดือน, สัดส่วนหมวดหมู่,
+//       จำนวนลูกค้า, % เทียบเดือนก่อน) จะขึ้นสถานะ "ยังไม่มีข้อมูล" แทนการเดาตัวเลข
+//       — dashboard ที่โชว์เลขปลอมอันตรายกว่า dashboard ที่โชว์น้อยแต่จริง
 "use client";
 
 import { useEffect, useState } from "react";
 import {
+  AlertCircle,
+  BarChart3,
   DollarSign,
-  ShoppingCart,
-  Users,
   Package,
-  TrendingUp,
+  PieChart,
+  ShoppingCart,
   TrendingDown,
+  TrendingUp,
+  Users,
 } from "lucide-react";
 import { cn, formatBaht } from "@/lib/utils";
 import { adminOrderHistoryService, productService } from "@/lib/services";
-import type { AdminStats, OrderHistory, Product } from "@/lib/types";
+import type { AdminStats, OrderHistory } from "@/lib/types";
 
-/* ─── Metric card ─── */
+/* ─── Metric card ───
+ * change = % เทียบช่วงก่อนหน้า จะแสดงก็ต่อเมื่อมีข้อมูลจริงเท่านั้น
+ * note   = เหตุผลที่ยังไม่มีตัวเลขให้ดู (ใช้แทน change)
+ */
 function MetricCard({
   icon: Icon,
   label,
   value,
-  change,
-  positive,
   accent,
+  change,
+  note,
 }: {
   icon: typeof DollarSign;
   label: string;
   value: string;
-  change: string;
-  positive: boolean;
   accent: string;
+  change?: { pct: string; positive: boolean };
+  note?: string;
 }) {
   return (
     <div className="group relative overflow-hidden rounded-2xl bg-white p-6 shadow-ambient transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg">
@@ -36,35 +47,30 @@ function MetricCard({
       </div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-secondary">
-            {label}
-          </p>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-on-surface">
-            {value}
-          </p>
-          <div className="mt-2 flex items-center gap-1">
-            {positive ? (
-              <TrendingUp size={14} className="text-primary" />
-            ) : (
-              <TrendingDown size={14} className="text-error" />
-            )}
-            <span
-              className={cn(
-                "text-xs font-medium",
-                positive ? "text-primary" : "text-error"
+          <p className="text-xs font-medium uppercase tracking-wider text-secondary">{label}</p>
+          <p className="mt-2 text-3xl font-bold tracking-tight text-on-surface">{value}</p>
+          {change ? (
+            <div className="mt-2 flex items-center gap-1">
+              {change.positive ? (
+                <TrendingUp size={14} className="text-primary" />
+              ) : (
+                <TrendingDown size={14} className="text-error" />
               )}
-            >
-              {change}
-            </span>
-            <span className="text-xs text-outline">จากเดือนก่อน</span>
-          </div>
-        </div>
-        <div
-          className={cn(
-            "flex h-12 w-12 items-center justify-center rounded-xl",
-            accent
+              <span
+                className={cn(
+                  "text-xs font-medium",
+                  change.positive ? "text-primary" : "text-error"
+                )}
+              >
+                {change.pct}
+              </span>
+              <span className="text-xs text-outline">จากเดือนก่อน</span>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-outline">{note ?? " "}</p>
           )}
-        >
+        </div>
+        <div className={cn("flex h-12 w-12 items-center justify-center rounded-xl", accent)}>
           <Icon size={22} className="text-white" />
         </div>
       </div>
@@ -72,47 +78,79 @@ function MetricCard({
   );
 }
 
-/* ─── Sales chart (SVG area) ─── */
-function SalesChart() {
-  const data = [30, 50, 40, 60, 45, 75, 65, 85, 70, 90, 80, 95];
-  const labels = [
-    "ม.ค.",
-    "ก.พ.",
-    "มี.ค.",
-    "เม.ย.",
-    "พ.ค.",
-    "มิ.ย.",
-    "ก.ค.",
-    "ส.ค.",
-    "ก.ย.",
-    "ต.ค.",
-    "พ.ย.",
-    "ธ.ค.",
-  ];
+/* ─── กรอบการ์ดกราฟ ─── */
+function ChartCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-6 shadow-ambient">
+      <div className="mb-4">
+        <h3 className="text-sm font-bold text-on-surface">{title}</h3>
+        {subtitle && <p className="text-xs text-secondary">{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** สถานะ "ยังไม่มีข้อมูล" ของกราฟ — บอกให้ชัดว่าไม่ใช่ศูนย์ แต่คือยังไม่มี API */
+function ChartPlaceholder({
+  icon: Icon,
+  text,
+  height = "h-[220px]",
+}: {
+  icon: typeof BarChart3;
+  text: string;
+  height?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-2 rounded-xl bg-surface-low/30 px-6 text-center",
+        height
+      )}
+    >
+      <Icon size={28} className="text-outline" />
+      <p className="text-xs text-secondary">{text}</p>
+    </div>
+  );
+}
+
+/* ─── Sales chart (SVG area) ───
+ * รับข้อมูลจริงผ่าน prop — ถ้ายังไม่มีจะขึ้น placeholder แทน
+ * (เดิม hardcode array [30,50,40,...] ไว้ในตัว component ทำให้ดูเหมือนมียอดขายจริง)
+ */
+function SalesChart({ series }: { series: { label: string; value: number }[] }) {
+  if (series.length === 0) {
+    return (
+      <ChartCard title="ยอดขายรายเดือน">
+        <ChartPlaceholder
+          icon={BarChart3}
+          text="ยังไม่มีข้อมูลยอดขายรายเดือน"
+        />
+      </ChartCard>
+    );
+  }
+
   const width = 600;
   const height = 200;
   const padding = 20;
-
-  const maxVal = Math.max(...data);
-  const points = data.map((v, i) => ({
-    x: padding + (i / (data.length - 1)) * (width - 2 * padding),
-    y: height - padding - (v / maxVal) * (height - 2 * padding),
+  const maxVal = Math.max(...series.map((s) => s.value)) || 1;
+  const points = series.map((s, i) => ({
+    x: padding + (i / Math.max(series.length - 1, 1)) * (width - 2 * padding),
+    y: height - padding - (s.value / maxVal) * (height - 2 * padding),
   }));
   const pathLine = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
   const pathArea = `${pathLine} L${points[points.length - 1].x},${height - padding} L${points[0].x},${height - padding} Z`;
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-ambient">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-bold text-on-surface">ยอดขายรายเดือน</h3>
-          <p className="text-xs text-secondary">ภาพรวมรายได้ปี 2024</p>
-        </div>
-        <select className="rounded-lg bg-surface-highest px-3 py-1.5 text-xs font-medium text-secondary outline-none">
-          <option>รายเดือน</option>
-          <option>รายสัปดาห์</option>
-        </select>
-      </div>
+    <ChartCard title="ยอดขายรายเดือน">
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="none">
         <defs>
           <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
@@ -121,41 +159,54 @@ function SalesChart() {
           </linearGradient>
         </defs>
         <path d={pathArea} fill="url(#areaFill)" />
-        <path d={pathLine} fill="none" stroke="#00675f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d={pathLine}
+          fill="none"
+          stroke="#00675f"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
         {points.map((p, i) => (
           <circle key={i} cx={p.x} cy={p.y} r="4" fill="white" stroke="#00675f" strokeWidth="2" />
         ))}
       </svg>
-      {/* Labels */}
       <div className="mt-2 flex justify-between px-5">
-        {labels.map((l) => (
-          <span key={l} className="text-[10px] text-outline">
-            {l}
+        {series.map((s) => (
+          <span key={s.label} className="text-[10px] text-outline">
+            {s.label}
           </span>
         ))}
       </div>
-    </div>
+    </ChartCard>
   );
 }
 
-/* ─── Category donut chart ─── */
-function CategoryDonut() {
-  const categories = [
-    { label: "เสื้อผ้า", pct: 35, color: "#00675f" },
-    { label: "อุปกรณ์", pct: 25, color: "#70516e" },
-    { label: "อิเล็กทรอนิกส์", pct: 20, color: "#95c8fe" },
-    { label: "อื่นๆ", pct: 20, color: "#b5e6e6" },
-  ];
+/* ─── Category donut chart ───
+ * เดิม hardcode 35/25/20/20 พร้อมชื่อหมวดที่อาจไม่มีอยู่จริงในระบบ
+ * ข้อมูลจริงต้อง join order_history (เก็บแค่ variant_id) → product → category
+ */
+function CategoryDonut({ slices }: { slices: { label: string; pct: number; color: string }[] }) {
+  if (slices.length === 0) {
+    return (
+      <ChartCard title="สัดส่วนหมวดหมู่">
+        <ChartPlaceholder
+          icon={PieChart}
+          text="ยังไม่มีข้อมูลสัดส่วนหมวดหมู่"
+        />
+      </ChartCard>
+    );
+  }
+
   const radius = 60;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-ambient">
-      <h3 className="mb-4 text-sm font-bold text-on-surface">สัดส่วนหมวดหมู่</h3>
+    <ChartCard title="สัดส่วนหมวดหมู่">
       <div className="flex items-center justify-center">
         <svg width="160" height="160" viewBox="0 0 160 160">
-          {categories.map((cat) => {
+          {slices.map((cat) => {
             const dash = (cat.pct / 100) * circumference;
             const gap = circumference - dash;
             const o = offset;
@@ -179,20 +230,17 @@ function CategoryDonut() {
         </svg>
       </div>
       <div className="mt-4 space-y-2">
-        {categories.map((cat) => (
+        {slices.map((cat) => (
           <div key={cat.label} className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span
-                className="h-3 w-3 rounded-full"
-                style={{ backgroundColor: cat.color }}
-              />
+              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color }} />
               <span className="text-xs text-secondary">{cat.label}</span>
             </div>
             <span className="text-xs font-bold text-on-surface">{cat.pct}%</span>
           </div>
         ))}
       </div>
-    </div>
+    </ChartCard>
   );
 }
 
@@ -208,8 +256,9 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
 export default function AdminDashboardPage() {
   const [recentOrders, setRecentOrders] = useState<OrderHistory[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [productCount, setProductCount] = useState(0);
+  const [productCount, setProductCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -223,63 +272,60 @@ export default function AdminDashboardPage() {
         setStats(statsRes);
         setProductCount(productsRes.total ?? 0);
       } catch (err) {
+        // WHY: เดิม catch แล้ว console.error เฉย ๆ — การ์ดค้างเป็น "—" โดยผู้ใช้ไม่รู้ว่าโหลดพัง
+        //      แยกไม่ออกระหว่าง "ยอดขาย 0" กับ "ต่อ API ไม่ได้"
         console.error("[AdminDashboard] failed to load dashboard data:", err);
+        setLoadFailed(true);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
+  /** ค่าที่ยังโหลดอยู่ / โหลดพัง ให้แสดงขีดแทน 0 เพื่อไม่ให้เข้าใจผิดว่าไม่มียอด */
+  const metric = (v: string | null | undefined) => (loading ? "…" : (v ?? "—"));
+
   return (
     <div>
-      <div className="mb-8 flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-on-surface">
-            แดชบอร์ดผู้ดูแล
-          </h1>
-          <p className="text-sm text-secondary">ภาพรวมร้านค้าและข้อมูลเชิงลึก</p>
-        </div>
-        <div className="flex gap-2">
-          <select className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-secondary shadow-ambient outline-none">
-            <option>7 วันล่าสุด</option>
-            <option>30 วันล่าสุด</option>
-            <option>ปีนี้</option>
-          </select>
-        </div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight text-on-surface">แดชบอร์ดผู้ดูแล</h1>
+        <p className="text-sm text-secondary">ภาพรวมร้านค้า (ยอดสะสมทั้งหมด)</p>
       </div>
+
+      {loadFailed && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+          <AlertCircle size={16} className="shrink-0" />
+          <span className="text-xs">
+            โหลดข้อมูลแดชบอร์ดไม่สำเร็จ — ตัวเลขที่แสดงอาจไม่ครบ กรุณารีเฟรชหน้าอีกครั้ง
+          </span>
+        </div>
+      )}
 
       {/* ── Metric Cards ── */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={DollarSign}
           label="ยอดขายรวม"
-          value={stats ? formatBaht(stats.total_revenue) : "—"}
-          change="+12.5%"
-          positive
+          value={metric(stats ? formatBaht(stats.total_revenue) : null)}
           accent="bg-primary"
         />
         <MetricCard
           icon={ShoppingCart}
           label="คำสั่งซื้อ"
-          value={stats ? stats.total_orders.toLocaleString() : "—"}
-          change="+8.2%"
-          positive
+          value={metric(stats ? stats.total_orders.toLocaleString() : null)}
           accent="bg-secondary"
         />
         <MetricCard
           icon={Users}
           label="ลูกค้า"
-          value="1,245"
-          change="+5.1%"
-          positive
+          value="—"
+          note="ยังไม่มี API นับจำนวนผู้ใช้"
           accent="bg-[#95c8fe]"
         />
         <MetricCard
           icon={Package}
           label="สินค้า"
-          value={String(productCount)}
-          change="-2.4%"
-          positive={false}
+          value={metric(productCount === null ? null : productCount.toLocaleString())}
           accent="bg-[#70516e]"
         />
       </div>
@@ -287,19 +333,16 @@ export default function AdminDashboardPage() {
       {/* ── Charts row ── */}
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <SalesChart />
+          <SalesChart series={[]} />
         </div>
-        <CategoryDonut />
+        <CategoryDonut slices={[]} />
       </div>
 
       {/* ── Recent orders ── */}
       <div className="rounded-2xl bg-white p-6 shadow-ambient">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-bold text-on-surface">คำสั่งซื้อล่าสุด</h3>
-          <a
-            href="/admin/orders"
-            className="text-xs font-medium text-primary hover:underline"
-          >
+          <a href="/admin/orders" className="text-xs font-medium text-primary hover:underline">
             ดูทั้งหมด →
           </a>
         </div>
@@ -323,7 +366,7 @@ export default function AdminDashboardPage() {
               ) : recentOrders.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-secondary">
-                    ยังไม่มีคำสั่งซื้อ
+                    {loadFailed ? "โหลดคำสั่งซื้อไม่สำเร็จ" : "ยังไม่มีคำสั่งซื้อ"}
                   </td>
                 </tr>
               ) : (
@@ -345,10 +388,7 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3 pr-4">
                         <span
-                          className={cn(
-                            "rounded-full px-3 py-1 text-xs font-medium",
-                            status.cls
-                          )}
+                          className={cn("rounded-full px-3 py-1 text-xs font-medium", status.cls)}
                         >
                           {status.label}
                         </span>
