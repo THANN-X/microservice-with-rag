@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn, formatBaht } from "@/lib/utils";
 import { adminOrderHistoryService, productService } from "@/lib/services";
+import { adminOrderStatus } from "@/lib/order-status";
 import type { AdminStats, OrderHistory } from "@/lib/types";
 
 /* ─── Metric card ───
@@ -244,15 +245,6 @@ function CategoryDonut({ slices }: { slices: { label: string; pct: number; color
   );
 }
 
-/* ─── Status badge ─── */
-const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  PENDING: { label: "รอดำเนินการ", cls: "bg-amber-50 text-amber-700" },
-  CONFIRMED: { label: "ยืนยันแล้ว", cls: "bg-blue-50 text-blue-700" },
-  SHIPPED: { label: "จัดส่งแล้ว", cls: "bg-sky-50 text-sky-700" },
-  COMPLETED: { label: "สำเร็จ", cls: "bg-emerald-50 text-emerald-700" },
-  CANCELLED: { label: "ยกเลิก", cls: "bg-red-50 text-red-700" },
-};
-
 export default function AdminDashboardPage() {
   const [recentOrders, setRecentOrders] = useState<OrderHistory[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -307,11 +299,12 @@ export default function AdminDashboardPage() {
           icon={DollarSign}
           label="ยอดขายรวม"
           value={metric(stats ? formatBaht(stats.total_revenue) : null)}
+          note="นับเฉพาะคำสั่งซื้อที่ชำระเงินแล้ว"
           accent="bg-primary"
         />
         <MetricCard
           icon={ShoppingCart}
-          label="คำสั่งซื้อ"
+          label="คำสั่งซื้อที่ชำระแล้ว"
           value={metric(stats ? stats.total_orders.toLocaleString() : null)}
           accent="bg-secondary"
         />
@@ -371,7 +364,7 @@ export default function AdminDashboardPage() {
                 </tr>
               ) : (
                 recentOrders.map((o) => {
-                  const status = STATUS_MAP[o.status] ?? STATUS_MAP.PENDING;
+                  const status = adminOrderStatus(o.status);
                   return (
                     <tr
                       key={o.order_id}

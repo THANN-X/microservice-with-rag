@@ -3,18 +3,11 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/auth-context";
 import { orderHistoryService } from "@/lib/services";
+import { shopOrderStatus } from "@/lib/order-status";
 import type { OrderHistory } from "@/lib/types";
 import { formatBaht } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
-const statusMap: Record<string, { label: string; color: string }> = {
-  PENDING: { label: "รอดำเนินการ", color: "bg-amber-100 text-amber-800" },
-  CONFIRMED: { label: "ยืนยันแล้ว", color: "bg-blue-100 text-blue-800" },
-  SHIPPED: { label: "กำลังจัดส่ง", color: "bg-secondary-container/30 text-on-secondary-container" },
-  COMPLETED: { label: "จัดส่งสำเร็จ", color: "bg-tertiary-container/30 text-on-tertiary-container" },
-  CANCELLED: { label: "ยกเลิก", color: "bg-error-container/30 text-on-error-container" },
-};
 
 export default function ProfilePage() {
   const { user, loading, logout, updateProfile, changePassword } = useAuth();
@@ -306,7 +299,7 @@ export default function ProfilePage() {
               <p className="text-center text-on-surface-variant py-10">ยังไม่มีคำสั่งซื้อ</p>
             )}
             {orders.map((order) => {
-              const status = statusMap[order.status] || statusMap.PENDING;
+              const status = shopOrderStatus(order.status);
               return (
                 <Link
                   key={order.order_id}

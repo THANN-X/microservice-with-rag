@@ -11,18 +11,9 @@ import {
 } from "lucide-react";
 import { cn, formatBaht } from "@/lib/utils";
 import { adminOrderHistoryService, adminOrderService } from "@/lib/services";
+import { ORDER_STATUS_ADMIN, adminOrderStatus } from "@/lib/order-status";
 import type { OrderHistory } from "@/lib/types";
 import { APP_CONFIG } from "@/lib/constants";
-
-const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  PENDING: { label: "รอดำเนินการ", cls: "bg-amber-50 text-amber-700" },
-  CONFIRMED: { label: "ยืนยันแล้ว", cls: "bg-blue-50 text-blue-700" },
-  AWAITING_PAYMENT: { label: "รอชำระเงิน", cls: "bg-orange-50 text-orange-700" },
-  PAID: { label: "ชำระเงินแล้ว", cls: "bg-emerald-50 text-emerald-700" },
-  SHIPPED: { label: "จัดส่งแล้ว", cls: "bg-sky-50 text-sky-700" },
-  COMPLETED: { label: "สำเร็จ", cls: "bg-emerald-50 text-emerald-700" },
-  CANCELLED: { label: "ยกเลิก", cls: "bg-red-50 text-red-700" },
-};
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderHistory[]>([]);
@@ -114,7 +105,7 @@ export default function AdminOrdersPage() {
           className="rounded-lg bg-surface-highest px-3 py-2 text-sm text-secondary outline-none"
         >
           <option value="">ทุกสถานะ</option>
-          {Object.entries(STATUS_MAP).map(([key, { label }]) => (
+          {Object.entries(ORDER_STATUS_ADMIN).map(([key, { label }]) => (
             <option key={key} value={key}>
               {label}
             </option>
@@ -156,7 +147,7 @@ export default function AdminOrdersPage() {
                 </tr>
               ) : (
                 filtered.map((o) => {
-                  const status = STATUS_MAP[o.status] ?? STATUS_MAP.PENDING;
+                  const status = adminOrderStatus(o.status);
                   return (
                     <tr
                       key={o.order_id}
