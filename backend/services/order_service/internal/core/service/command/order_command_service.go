@@ -490,7 +490,17 @@ func (s *orderCommandService) HandlePaymentWebhook(ctx context.Context, req *dto
 	// 1. Verify webhook signature
 	webhookEvent, err := s.paymentGateway.VerifyWebhook(req.Signature, req.Payload)
 	if err != nil {
+		// WHY log err ก่อน return?
+		//   - สาเหตุที่ verify ไม่ผ่านมีหลายอย่าง (signature ผิด, header หาย, API version ไม่ตรง,
+		//     event type ที่ยังไม่รองรับ) แต่ client ได้รับข้อความเดียวกันหมด
+		//   - ถ้าไม่ log สาเหตุจริง จะ debug 400 จาก Stripe ไม่ได้เลย
+		logs.Error(err)
 		return errs.NewValidationError("invalid webhook signature")
+	}
+	// event ที่ verify ผ่านแต่ไม่เกี่ยวกับเรา (payment_intent.created ฯลฯ) → ตอบ 200 แล้วจบ
+	// ห้ามคืน error เพราะจะทำให้ Stripe retry ซ้ำไปเรื่อยๆ โดยไม่มีทางสำเร็จ
+	if webhookEvent == nil {
+		return nil
 	}
 
 	// 2. Find payment by charge ID

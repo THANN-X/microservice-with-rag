@@ -197,7 +197,14 @@ func (g *StripeGateway) chargePromptPay(amountSatang int64, req *gateway.ChargeR
 // signature — ค่าจาก HTTP Header "Stripe-Signature"
 // payload   — raw request body (ต้องเป็น raw bytes ก่อน JSON parse)
 func (g *StripeGateway) VerifyWebhook(signature string, payload []byte) (*gateway.WebhookEvent, error) {
-	event, err := webhook.ConstructEvent(payload, signature, g.webhookSecret)
+	// WHY IgnoreAPIVersionMismatch?
+	//   - ConstructEvent เช็ค release train ของ API version ด้วย: stripe-go v82 = "basil"
+	//     แต่บัญชี Stripe ที่ตั้งค่าใหม่ส่ง event เป็น "dahlia" → reject ทุก event
+	//   - เราอ่านจาก event แค่ PaymentIntent.ID กับ metadata["order_id"] ซึ่งไม่เปลี่ยนข้าม train
+	//     → ปิดการเช็คได้ปลอดภัย (signature ยังถูก verify เหมือนเดิมทุกประการ)
+	//   - ถ้าอนาคตอัป stripe-go ให้ตรง train ของบัญชีแล้ว จะเอา option นี้ออกก็ได้
+	event, err := webhook.ConstructEventWithOptions(payload, signature, g.webhookSecret,
+		webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true})
 	if err != nil {
 		return nil, fmt.Errorf("webhook signature verification failed: %w", err)
 	}
@@ -226,9 +233,16 @@ func (g *StripeGateway) VerifyWebhook(signature string, payload []byte) (*gatewa
 		}, nil
 
 	default:
-		// event types อื่นๆ ที่ไม่ได้ handle — return nil error เพื่อ return 200 ให้ Stripe
-		// (Stripe retry ถ้าได้รับ non-2xx)
-		return nil, fmt.Errorf("unhandled stripe event type: %s", event.Type)
+		// event type ที่เราไม่สนใจ (payment_intent.created, charge.updated, ฯลฯ)
+		//
+		// WHY (nil, nil) ไม่ใช่ error?
+		//   - signature ผ่านแล้ว = เป็น request จาก Stripe จริง ไม่ใช่ของปลอม → ไม่ใช่ความผิดพลาด
+		//   - ถ้าคืน error → handler ตอบ 400 → Stripe มองว่า delivery ล้มเหลว แล้ว retry
+		//     ด้วย exponential backoff นานหลายวัน ทั้งที่ retry ไปกี่รอบก็ได้ผลเดิม
+		//   - endpoint จริงใน Dashboard จะได้รับ event หลายสิบชนิด ถ้าตอบ 400 หมด
+		//     dashboard จะขึ้นสถานะ endpoint ล้มเหลวและอาจถูก auto-disable
+		//   - caller ต้องเช็ค nil แล้วตอบ 200 (ดู HandlePaymentWebhook)
+		return nil, nil
 	}
 }
 
