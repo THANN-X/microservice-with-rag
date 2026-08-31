@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Embedding
     # BGE-M3 เป็นโมเดลสาย retrieval (asymmetric query↔document) ต่างจาก paraphrase-mpnet เดิม
-    # ที่เป็น symmetric paraphrase — วัดกับชุดคำถามจริง 30 ข้อได้ hit rate 0.93→1.00
+    # ที่เป็น symmetric paraphrase — วัดกับ golden set 34 ข้อได้ hit rate 0.93→1.00
     # และ reject rate (คำถามนอกแคตตาล็อกต้องไม่คืนสินค้า) 0.83→1.00
     # กินแรมราว 2.3GB ตอนโหลด (mpnet ~1GB) ดู mem_limit ของ ai-service-app ใน docker-compose
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
