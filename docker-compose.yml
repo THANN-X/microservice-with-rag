@@ -290,11 +290,21 @@ services:
       - HTTP_PORT=8000
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-products_bge_m3}
       - KAFKA_BROKERS=kafka:9092
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL}
+      # Embedding ทั้งสามค่าต้องตรงกันเสมอ (โมเดล / มิติ / collection ที่ index ด้วยโมเดลนั้น)
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-m3}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-1024}
+      # RAG retrieval ปรับได้โดยไม่ต้อง rebuild image
+      - RAG_TOP_K=${RAG_TOP_K:-5}
+      - RAG_SCORE_THRESHOLD=${RAG_SCORE_THRESHOLD:-0.45}
     volumes:
       - huggingface_cache:/root/.cache/huggingface
+    # BGE-M3 กินราว 2.3GB ตอนโหลด จำกัดไว้เพื่อให้ container นี้ตายเดี่ยว
+    # ไม่ลาก container อื่นใน stack ล้มตามไปด้วย (เคยเกิดตอนโหลดโมเดลซ้อนสองตัว)
+    mem_limit: 6g
     restart: unless-stopped
 
 volumes:

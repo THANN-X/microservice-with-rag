@@ -19,7 +19,12 @@ function ProductRecommendations({ productIds }: { productIds: number[] }) {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
 
   useEffect(() => {
-    Promise.all(productIds.map((id) => catalogService.get(String(id))))
+    // กลืน error ของแต่ละชิ้นตรงนี้ ไม่งั้น Promise.all จะ reject ทั้งก้อน
+    // แล้วสินค้าชิ้นเดียวที่ดึงไม่ได้ (เช่นถูกลบจาก catalog แต่ยังค้างใน Qdrant)
+    // จะทำให้การ์ดหายทั้งแถว ทั้งที่ชิ้นอื่นดึงสำเร็จ
+    Promise.all(
+      productIds.map((id) => catalogService.get(String(id)).catch(() => null))
+    )
       .then((responses) => {
         // filter out nulls or errors and extract product data
         const validProducts = responses
