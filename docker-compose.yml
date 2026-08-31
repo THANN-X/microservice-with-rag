@@ -235,6 +235,7 @@ services:
       - MONGO_URI_CATALOG=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-password}@catalog-mongo:27017/catalog_db?authSource=admin
       - MONGO_DB_CATALOG=catalog_db
       - KAFKA_BROKERS=kafka:9092
+    restart: unless-stopped
 
   order-history-service-app:
     build:
@@ -253,6 +254,7 @@ services:
       - MONGO_URI_ORDER_HISTORY=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-password}@catalog-mongo:27017/order_history_db?authSource=admin
       - MONGO_DB_ORDER_HISTORY=order_history_db
       - KAFKA_BROKERS=kafka:9092
+    restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:v1.12.5
