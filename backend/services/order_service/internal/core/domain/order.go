@@ -213,9 +213,14 @@ func (o *Order) ConfirmOrder() error {
 
 // MarkReservationFailed transitions PENDING → CANCELLED เมื่อ stock reservation ล้มเหลว
 //
-// WHY ไม่ raise OrderCancelledEvent?
+// WHY raise OrderReservationFailedEvent ไม่ใช่ OrderCancelledEvent?
 //   - Stock ไม่ถูก reserve → ไม่มี stock ที่ต้องคืน
-//   - ถ้า raise event → product_service จะ IncreaseStock โดยไม่จำเป็น (stock goes up incorrectly)
+//   - ถ้า raise OrderCancelledEvent → product_service จะ IncreaseStock โดยไม่จำเป็น
+//     (stock goes up incorrectly)
+//   - แต่ "ไม่ raise อะไรเลย" ก็ผิด: order_history เป็น read model ที่รู้สถานะจาก event เท่านั้น
+//     พอไม่มี event มันค้างที่ PENDING ถาวร → ลูกค้าและแอดมินเห็น "รอดำเนินการ"
+//     ทั้งที่ order ตายไปแล้ว และไม่มีอะไรมาซ่อมให้ทีหลังเลย
+//   - OrderReservationFailedEvent แยกสองความหมายนี้ออกจากกัน: แจ้งสถานะได้ โดยไม่สั่ง compensate
 //
 // WHY แยก method จาก Cancel()? Semantic ต่างกัน:
 //   - MarkReservationFailed = system-driven (Saga step failed) → no compensation needed
@@ -228,7 +233,15 @@ func (o *Order) MarkReservationFailed() error {
 	o.Status = OrderStatusCancelled
 	o.UpdatedAt = time.Now()
 
-	// WHY no event? ดูคำอธิบายด้านบน
+	// WHY reason เป็นภาษาไทย? — field นี้ถูกแสดงตรงๆ บนหน้า order ของลูกค้าและแอดมิน
+	// (order.cancel_reason) ช่องเดียวกับที่ลูกค้าพิมพ์เหตุผลตอนกดยกเลิกเอง
+	o.addEvent(&events.OrderReservationFailedEvent{
+		OrderID:    o.ID,
+		CustomerID: o.CustomerID,
+		Reason:     "สินค้าไม่เพียงพอ",
+		OccurredAt: time.Now(),
+	})
+
 	return nil
 }
 
@@ -236,12 +249,24 @@ func (o *Order) MarkReservationFailed() error {
 
 // MarkAwaitingPayment transitions CONFIRMED → AWAITING_PAYMENT
 // ใช้สำหรับ async payment (เช่น PromptPay QR) ที่ยังไม่รู้ผล charge ทันที
+//
+// WHY raise event ทั้งที่ไม่มีใครต้อง compensate?
+//   - order_history รู้สถานะจาก event เท่านั้น ถ้าไม่ raise → read model ค้างที่ CONFIRMED
+//     ทั้งที่ลูกค้าถือ QR รออยู่ → แอดมินเห็น "ยืนยันแล้ว" แยกไม่ออกจาก order ที่ยังไม่เริ่มจ่าย
+//   - caller ต้องเรียก SaveDomainEvents ต่อด้วยเสมอ (ดู ProcessPayment case "PENDING")
 func (o *Order) MarkAwaitingPayment() error {
 	if o.Status != OrderStatusConfirmed {
 		return ErrInvalidOrderTransition
 	}
 	o.Status = OrderStatusAwaitingPayment
 	o.UpdatedAt = time.Now()
+
+	o.addEvent(&events.OrderAwaitingPaymentEvent{
+		OrderID:    o.ID,
+		CustomerID: o.CustomerID,
+		OccurredAt: time.Now(),
+	})
+
 	return nil
 }
 

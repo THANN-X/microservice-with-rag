@@ -90,9 +90,25 @@ func (h *orderEventHandler) Handle(ctx context.Context, msg *sarama.ConsumerMess
 		return h.cmdService.HandleOrderCancelled(ctx, messageID, &evt)
 
 	case "ORDER_PAID":
-		// ORDER_PAID ยังไม่อยู่ใน OrderHistoryCommandService interface
-		// TODO: เพิ่ม HandleOrderPaid เมื่อต้องการแสดงสถานะ paid ใน order history
-		return nil
+		var evt events.OrderPaidEvent
+		if err := json.Unmarshal(msg.Value, &evt); err != nil {
+			return fmt.Errorf("unmarshal ORDER_PAID: %w", err)
+		}
+		return h.cmdService.HandleOrderPaid(ctx, messageID, &evt)
+
+	case "ORDER_AWAITING_PAYMENT":
+		var evt events.OrderAwaitingPaymentEvent
+		if err := json.Unmarshal(msg.Value, &evt); err != nil {
+			return fmt.Errorf("unmarshal ORDER_AWAITING_PAYMENT: %w", err)
+		}
+		return h.cmdService.HandleOrderAwaitingPayment(ctx, messageID, &evt)
+
+	case "ORDER_RESERVATION_FAILED":
+		var evt events.OrderReservationFailedEvent
+		if err := json.Unmarshal(msg.Value, &evt); err != nil {
+			return fmt.Errorf("unmarshal ORDER_RESERVATION_FAILED: %w", err)
+		}
+		return h.cmdService.HandleOrderReservationFailed(ctx, messageID, &evt)
 
 	default:
 		// STOCK_RESERVED, STOCK_RELEASED, PRODUCT_* ไม่เกี่ยวกับ order history — ข้ามไป

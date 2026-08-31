@@ -317,3 +317,42 @@ type OrderPaidEvent struct {
 }
 
 func (e OrderPaidEvent) EventName() string { return "ORDER_PAID" }
+
+// OrderReservationFailedEvent raised by order_service เมื่อ stock reservation ล้มเหลว (ของไม่พอ)
+// → Order ถูก cancel ทันทีโดยไม่มี stock ค้างอยู่
+//
+// WHY ต้องเป็น event ชนิดใหม่ ไม่ reuse OrderCancelledEvent?
+//   - OrderCancelledEvent มีความหมายว่า "stock เคยถูก reserve แล้ว ช่วย release คืนให้ที"
+//     product_service consume แล้ว IncreaseStock ทันที
+//   - เคสนี้ stock ไม่เคยถูกตัด (DecreaseStock rollback ไปแล้ว) → ถ้าส่ง OrderCancelledEvent
+//     stock จะงอกเกินจริง
+//   - แต่ order_history ยังต้องรู้ว่า order ตายแล้ว ไม่งั้น read model ค้างที่ PENDING ตลอดไป
+//   - แยก event type จึงแยก "แจ้งว่าสถานะเปลี่ยน" ออกจาก "สั่งให้ compensate" ได้สะอาด
+//     product_service เจอ event type ที่ไม่รู้จัก → skip เอง (ดู order_event_handler.go default case)
+//
+// WHY ไม่มี field Items?
+//   - จงใจไม่ใส่ เพื่อให้ event นี้ไม่มีทางถูกนำไปใช้ trigger stock release ได้เลย
+//     แม้จะมีคนเผลอ consume ผิดในอนาคต
+type OrderReservationFailedEvent struct {
+	OrderID    string    `json:"order_id"`
+	CustomerID uint      `json:"customer_id"`
+	Reason     string    `json:"reason"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+func (e OrderReservationFailedEvent) EventName() string { return "ORDER_RESERVATION_FAILED" }
+
+// OrderAwaitingPaymentEvent raised by order_service เมื่อ order เข้าสู่สถานะรอชำระเงิน
+// (async payment เช่น PromptPay QR ที่ออก QR แล้วแต่ยังไม่รู้ผล)
+//
+// WHY ต้องมี?
+//   - เดิม CONFIRMED → AWAITING_PAYMENT ไม่ raise event เลย → read model ค้างที่ "ยืนยันแล้ว"
+//     ทั้งที่ลูกค้าถือ QR รอจ่ายอยู่ → แอดมินอ่านสถานะผิด
+//   - เป็น informational event ล้วน ไม่มี consumer ไหนต้อง compensate
+type OrderAwaitingPaymentEvent struct {
+	OrderID    string    `json:"order_id"`
+	CustomerID uint      `json:"customer_id"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+func (e OrderAwaitingPaymentEvent) EventName() string { return "ORDER_AWAITING_PAYMENT" }

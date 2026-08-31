@@ -9,9 +9,16 @@
 //   - consumerID = "order-history-service" (namespace ไม่ซ้ำกับ catalog-service หรือ consumer อื่น)
 //
 // Events ที่ handle:
-//   OrderCreatedEvent   → Upsert OrderHistory doc (status: "PENDING")
-//   OrderConfirmedEvent → UpdateStatus "CONFIRMED"
-//   OrderCancelledEvent → MarkCancelled + set cancel_reason
+//   OrderCreatedEvent            → Upsert OrderHistory doc (status: "PENDING")
+//   OrderConfirmedEvent          → UpdateStatus "CONFIRMED"
+//   OrderAwaitingPaymentEvent    → UpdateStatus "AWAITING_PAYMENT"
+//   OrderPaidEvent               → UpdateStatus "PAID"
+//   OrderCancelledEvent          → MarkCancelled + set cancel_reason
+//   OrderReservationFailedEvent  → MarkCancelled (ของไม่พอ — ไม่ใช่ compensation event)
+//
+// NOTE: read model นี้รู้สถานะจาก event เท่านั้น ไม่เคยไปถาม order_service ย้อนหลัง
+//       ทุก state transition ฝั่ง order_service ที่ไม่ raise event = ช่องโหว่ที่ทำให้ doc ค้าง
+//       สถานะเก่าถาวร ไม่มี reconcile job มาซ่อมให้
 package command
 
 import (
@@ -126,6 +133,80 @@ func (s *orderHistoryCommandService) HandleOrderConfirmed(ctx context.Context, m
 	}
 
 	logs.Info("order-history: order confirmed — " + evt.OrderID)
+	return s.markProcessed(ctx, messageID)
+}
+
+// HandleOrderPaid อัปเดต read model เป็น "PAID" หลังลูกค้าชำระเงินสำเร็จ
+//
+// WHY สำคัญ?
+//   - หน้ารายการ order ของลูกค้า และหน้า admin ทั้งหมดอ่านจาก read model นี้
+//     (มีแค่หน้ารายละเอียดฝั่งลูกค้าที่อ่าน order_service ตรงๆ)
+//   - ถ้าไม่ apply event นี้ → read model ค้างที่ "CONFIRMED" ตลอด
+//     → แอดมินเห็นว่ายังไม่จ่าย ทั้งที่เงินเข้าแล้ว → ไม่ส่งของ
+func (s *orderHistoryCommandService) HandleOrderPaid(ctx context.Context, messageID string, evt *events.OrderPaidEvent) error {
+	processed, err := s.isProcessed(ctx, messageID)
+	if err != nil {
+		return err
+	}
+	if processed {
+		return nil
+	}
+
+	if err := s.writeRepo.UpdateStatus(ctx, evt.OrderID, "PAID"); err != nil {
+		return err
+	}
+
+	logs.Info("order-history: order paid — " + evt.OrderID)
+	return s.markProcessed(ctx, messageID)
+}
+
+// HandleOrderAwaitingPayment อัปเดต read model เป็น "AWAITING_PAYMENT" เมื่อ order ออก QR รอจ่าย
+//
+// WHY สำคัญ?
+//   - แยก "ยืนยันแล้วแต่ยังไม่เริ่มจ่าย" ออกจาก "ออก QR แล้วรอเงินเข้า" ได้
+//     ก่อนหน้านี้สองเคสนี้หน้าตาเหมือนกันหมดใน read model (CONFIRMED ทั้งคู่)
+//   - หน้าลูกค้าจะได้ขึ้น "รอชำระเงิน" ตรงกับที่เขากำลังถือ QR อยู่จริง
+func (s *orderHistoryCommandService) HandleOrderAwaitingPayment(ctx context.Context, messageID string, evt *events.OrderAwaitingPaymentEvent) error {
+	processed, err := s.isProcessed(ctx, messageID)
+	if err != nil {
+		return err
+	}
+	if processed {
+		return nil
+	}
+
+	if err := s.writeRepo.UpdateStatus(ctx, evt.OrderID, "AWAITING_PAYMENT"); err != nil {
+		return err
+	}
+
+	logs.Info("order-history: order awaiting payment — " + evt.OrderID)
+	return s.markProcessed(ctx, messageID)
+}
+
+// HandleOrderReservationFailed ปิด order ที่ตายเพราะ stock ไม่พอ
+//
+// WHY ต้องมี handler แยกจาก HandleOrderCancelled?
+//   - order_service ส่งคนละ event เพราะเคสนี้ห้าม trigger stock release (ดู events.go)
+//     read model ฝั่งนี้จึงต้องรับ event คนละชนิดด้วย แม้ผลลัพธ์บน doc จะเหมือนกัน
+//   - ก่อนมี event นี้ order ประเภทนี้ค้างที่ "PENDING" ถาวร — ลูกค้าเห็น "รอดำเนินการ"
+//     ทั้งที่ order ถูกยกเลิกไปแล้ว และไม่มี event ใดตามมาแก้ให้เลย
+//
+// WHY ใช้ MarkCancelled ตัวเดิม?
+//   - ปลายทางเหมือนกันเป๊ะ (status=CANCELLED + cancel_reason) ต่างแค่ที่มาของ reason
+func (s *orderHistoryCommandService) HandleOrderReservationFailed(ctx context.Context, messageID string, evt *events.OrderReservationFailedEvent) error {
+	processed, err := s.isProcessed(ctx, messageID)
+	if err != nil {
+		return err
+	}
+	if processed {
+		return nil
+	}
+
+	if err := s.writeRepo.MarkCancelled(ctx, evt.OrderID, evt.Reason); err != nil {
+		return err
+	}
+
+	logs.Info("order-history: order cancelled (reservation failed) — " + evt.OrderID)
 	return s.markProcessed(ctx, messageID)
 }
 

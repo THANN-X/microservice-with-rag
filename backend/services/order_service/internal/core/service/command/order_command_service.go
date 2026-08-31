@@ -456,7 +456,11 @@ func (s *orderCommandService) ProcessPayment(ctx context.Context, orderID string
 					return err
 				}
 			}
-			return nil
+			// WHY ต้อง SaveDomainEvents ทั้งที่ path นี้ไม่มี compensation?
+			//   - MarkAwaitingPayment raise OrderAwaitingPaymentEvent เพื่อให้ order_history
+			//     ตามสถานะทัน ถ้าไม่ flush ลง outbox ที่นี่ event จะถูกทิ้งไปเงียบๆ
+			//   - repay path (order = AWAITING_PAYMENT อยู่แล้ว) ไม่มี event → Pop คืน [] → no-op
+			return s.cmdRepo.SaveDomainEvents(txCtx, order)
 		}); err != nil {
 			logs.Error(err)
 			return nil, errs.NewUnexpectedError()
