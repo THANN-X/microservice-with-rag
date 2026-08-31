@@ -62,6 +62,12 @@ func (s *userService) RegisterUser(ctx context.Context, newUserReq *dto.CreateUs
 	// What: บันทึก user ลง DB
 	if err = s.userRepo.CreateUser(ctx, newUserDomain); err != nil {
 		logs.Error(err)
+		// Why: การเช็คซ้ำด้านบนมี race — ถ้าสองคนสมัคร email เดียวกันพร้อมกัน
+		//      ทั้งคู่จะผ่าน FindByEmail แล้วคนที่สองไปชน unique index ตรงนี้
+		//      ต้องคืน 409 เหมือนกัน ไม่ใช่ 500
+		if errors.Is(err, domain.ErrDuplicateKey) {
+			return nil, errs.NewConflictError("email already exists")
+		}
 		return nil, errs.NewUnexpectedError()
 	}
 

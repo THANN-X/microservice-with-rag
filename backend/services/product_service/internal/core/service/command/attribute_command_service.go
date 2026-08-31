@@ -26,7 +26,10 @@ func NewAttributeCommandService(cmdRepo repoport.AttributeCommandRepository, que
 
 func (s *attributeCommandService) CreateAttribute(ctx context.Context, req *dto.CreateAttributeReq) error {
 	attr := &domain.Attribute{Name: req.Name}
-	return s.cmdRepo.CreateAttribute(ctx, attr)
+	if err := s.cmdRepo.CreateAttribute(ctx, attr); err != nil {
+		return conflictOrUnexpected(err, "Attribute \""+req.Name+"\" already exists")
+	}
+	return nil
 }
 
 // UpdateAttribute ใช้ pattern "Load → Modify → Save" เหมือนกับ Category และ Product
@@ -44,7 +47,10 @@ func (s *attributeCommandService) UpdateAttribute(ctx context.Context, req *dto.
 	}
 	// Modify ผ่าน domain method — ไม่ set field โดยตรง
 	existing.Update(req.Name)
-	return s.cmdRepo.UpdateAttribute(ctx, existing)
+	if err := s.cmdRepo.UpdateAttribute(ctx, existing); err != nil {
+		return conflictOrUnexpected(err, "Attribute \""+req.Name+"\" already exists")
+	}
+	return nil
 }
 
 func (s *attributeCommandService) DeleteAttribute(ctx context.Context, id uint) error {
@@ -71,7 +77,8 @@ func (s *attributeCommandService) CreateAttributeValue(ctx context.Context, req 
 		Value:       req.Value,
 	}
 	if err := s.cmdRepo.CreateAttributeValue(ctx, val); err != nil {
-		return nil, err
+		// uniqueIndex:(attribute_id, value) → ค่าซ้ำภายใน attribute เดียวกัน
+		return nil, conflictOrUnexpected(err, "Value \""+req.Value+"\" already exists in this attribute")
 	}
 	// คืนค่าที่สร้าง (พร้อม ID ที่ DB generate) เพื่อให้ frontend append ลง state ได้โดยไม่ต้อง refetch
 	return &dto.AttributeValueRes{ID: val.ID, Value: val.Value}, nil

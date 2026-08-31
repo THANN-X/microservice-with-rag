@@ -27,7 +27,7 @@ func NewCategoryRepository(db *gorm.DB) (port.CategoryCommandRepository, port.Ca
 func (r *categoryRepository) CreateCategory(ctx context.Context, category *domain.Category) error {
 	e := entity.ToCategoryEntity(category)
 	if err := r.db.WithContext(ctx).Create(e).Error; err != nil {
-		return err
+		return toDomainDBError(err)
 	}
 	// Sync กลับ ID และ Timestamp ที่ DB generate มาให้ Domain Object
 	// เพื่อให้ caller (Service Layer) รู้ว่า record ถูก save ด้วย ID อะไร
@@ -49,7 +49,7 @@ func (r *categoryRepository) UpdateCategory(ctx context.Context, category *domai
 	e := entity.ToCategoryEntity(category)
 	// ใช้ Save แทน Updates เพราะต้องการ update ทุก field รวมถึง IsActive=false ด้วย
 	// Updates จะ skip zero-value fields ทำให้ `is_active = false` ถูกโยนทิ้ง
-	return r.db.WithContext(ctx).Save(e).Error
+	return toDomainDBError(r.db.WithContext(ctx).Save(e).Error)
 }
 
 func (r *categoryRepository) DeleteCategory(ctx context.Context, id uint) error {

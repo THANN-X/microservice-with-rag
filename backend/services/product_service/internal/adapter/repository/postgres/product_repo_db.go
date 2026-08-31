@@ -62,7 +62,8 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 	productEntity := entity.ToProductEntity(product)
 
 	if err := r.GetDB(ctx).Create(productEntity).Error; err != nil {
-		return err
+		// variant.sku มี uniqueIndex → สร้างสินค้าด้วย SKU ที่มีอยู่แล้วจะโดนตรงนี้
+		return toDomainDBError(err)
 	}
 
 	// Sync DB-generated fields กลับไปยัง domain object
@@ -253,7 +254,8 @@ func (r *productRepository) AddVariant(ctx context.Context, variant *domain.Prod
 	vEntity := entity.ToProductVariantEntity(variant)
 
 	if err := r.GetDB(ctx).Create(vEntity).Error; err != nil {
-		return err
+		// sku ซ้ำกับ variant ที่มีอยู่ (uniqueIndex ระดับตาราง ไม่ใช่แค่ในสินค้าเดียวกัน)
+		return toDomainDBError(err)
 	}
 
 	// Sync ID กลับไป Domain → Service จะส่งต่อ ID นี้ให้ AddNewVariant() raise event

@@ -29,7 +29,8 @@ func (r *userRepositoryDB) CreateUser(ctx context.Context, user *domain.User) er
 	userEntity := entity.ToUserEntity(user)
 
 	if result := r.db.WithContext(ctx).Create(userEntity); result.Error != nil {
-		return result.Error
+		// email มี unique index → safety net เผื่อ race กับการเช็คซ้ำใน service layer
+		return toDomainDBError(result.Error)
 	}
 	// What: sync ค่าที่ DB generate กลับไปยัง domain object
 	user.ID = userEntity.ID

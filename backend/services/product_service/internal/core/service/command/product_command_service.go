@@ -67,7 +67,7 @@ func (s *productCommandService) CreateProduct(ctx context.Context, userID uint, 
 		// Repo assigns the auto-increment ID back into newProduct after insert
 		if err := s.cmdRepo.CreateProduct(txCtx, newProduct); err != nil {
 			logs.Error(err)
-			return errs.NewUnexpectedError()
+			return conflictOrUnexpected(err, "SKU already used by an existing variant")
 		}
 
 		return nil
@@ -232,7 +232,7 @@ func (s *productCommandService) AddVariant(ctx context.Context, userID uint, req
 		// Persist first to obtain the DB-assigned ID before raising the domain event
 		if err := s.cmdRepo.AddVariant(txCtx, &newVariant); err != nil {
 			logs.Error(err)
-			return errs.NewUnexpectedError()
+			return conflictOrUnexpected(err, "SKU \""+req.Sku+"\" is already used by another variant")
 		}
 
 		// Call Domain Logic (เพื่อสร้าง Event)

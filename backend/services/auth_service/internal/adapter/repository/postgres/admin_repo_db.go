@@ -29,7 +29,8 @@ func (r *adminRepositoryDB) CreateAdmin(ctx context.Context, admin *domain.Admin
 	//      ถ้าเขียน `if err := Create(...); err != nil` จะ return ออกทุกครั้งแล้วข้าม sync ข้างล่าง
 	result := r.db.WithContext(ctx).Create(adminEntity)
 	if result.Error != nil {
-		return result.Error
+		// username มี unique index → safety net เผื่อ race กับการเช็คซ้ำใน service layer
+		return toDomainDBError(result.Error)
 	}
 
 	// What: sync ค่าที่ DB generate กลับไปยัง domain object
