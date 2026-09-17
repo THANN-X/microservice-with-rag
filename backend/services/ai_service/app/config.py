@@ -34,6 +34,12 @@ class Settings(BaseSettings):
 
     # Conversation memory
     CONVERSATION_MAX_HISTORY: int = 10
+    # ประวัติเก็บในหน่วยความจำของ process ถ้าไม่กวาดทิ้ง แรมจะโตตามจำนวน session ที่เคยเข้ามา
+    # จนโดน OOM kill (โมเดล embedding กินไปแล้วราว 2.3GB ดู mem_limit ของ ai-service-app)
+    # CONVERSATION_TTL_SECONDS: session ที่เงียบเกินเวลานี้ถูกลบทิ้ง
+    # CONVERSATION_MAX_SESSIONS: เพดานจำนวน session ที่ถือไว้พร้อมกัน เกินแล้วไล่ตัวที่เก่าสุดออกก่อน
+    CONVERSATION_TTL_SECONDS: int = 3600
+    CONVERSATION_MAX_SESSIONS: int = 1000
 
     # RAG retrieval
     # RAG_TOP_K: จำนวนสินค้าสูงสุดที่ดึงเข้า context prompt (แลกระหว่าง recall กับ token)
