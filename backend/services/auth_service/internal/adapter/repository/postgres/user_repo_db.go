@@ -29,12 +29,16 @@ func (r *userRepositoryDB) CreateUser(ctx context.Context, user *domain.User) er
 	userEntity := entity.ToUserEntity(user)
 
 	if result := r.db.WithContext(ctx).Create(userEntity); result.Error != nil {
-		return result.Error
+		// email มี unique index → safety net เผื่อ race กับการเช็คซ้ำใน service layer
+		return toDomainDBError(result.Error)
 	}
 	// What: sync ค่าที่ DB generate กลับไปยัง domain object
 	user.ID = userEntity.ID
 	user.CreatedAt = userEntity.CreatedAt
 	user.UpdatedAt = userEntity.UpdatedAt
+	// Why: Role มาจาก `default:'customer'` ใน entity tag — GORM เติมค่าให้ตอน insert
+	//      ต้อง sync กลับ ไม่งั้น response ของ RegisterUser คืน role เป็น empty string
+	user.Role = userEntity.Role
 
 	return nil
 }

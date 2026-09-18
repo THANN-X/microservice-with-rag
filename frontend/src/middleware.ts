@@ -24,13 +24,11 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }
 
-     // มี cookie แต่ role ไม่ใช่ admin → redirect กลับหน้าหลัก
-    const role = request.cookies.get("role");
-    if (!role || role.value !== "admin") {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
+    // Why: ไม่เช็ค role ที่ชั้นนี้ — role อยู่ใน JWT ที่ middleware ไม่ verify
+    //      cookie ที่ JS อ่าน/เขียนได้เป็นด่านหลอก (แก้เป็น admin เองได้จาก devtools)
+    //      การเช็ค role จริงทำ 2 ชั้น: BFF gateway (verify signature) + admin layout (/auth/me)
   }
-  
+
 
   return NextResponse.next();
 }

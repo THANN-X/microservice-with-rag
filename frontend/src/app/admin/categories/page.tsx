@@ -6,6 +6,22 @@ import { cn } from "@/lib/utils";
 import { categoryService, adminCategoryService } from "@/lib/services";
 import type { Category } from "@/lib/types";
 
+/* ─── Slug helper ───
+ * WHAT: แปลงชื่อหมวดหมู่เป็น slug
+ * NOTE: คอลัมน์ slug เป็น UNIQUE ใน DB — ถ้าชนกันจะสร้างไม่ผ่าน
+ *       จึงต้องเปิดให้ผู้ใช้แก้ slug เองได้ในฟอร์ม ไม่ใช่ auto-gen อย่างเดียว
+ */
+const toSlug = (text: string) =>
+  text.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9฀-๿-]/g, "");
+
+/** แบน category tree เป็น list พร้อม indent — ใช้ใน dropdown ให้เลือกได้ทุกระดับ */
+function flattenOptions(cats: Category[], depth = 0): { id: number; label: string; slug: string }[] {
+  return cats.flatMap((c) => [
+    { id: c.id, label: `${"  ".repeat(depth)}${depth > 0 ? "└ " : ""}${c.name}`, slug: c.slug },
+    ...flattenOptions(c.children ?? [], depth + 1),
+  ]);
+}
+
 /* ─── Create Category Modal ─── */
 function CreateCategoryModal({
   open,
@@ -19,26 +35,54 @@ function CreateCategoryModal({
   onCreated: () => void;
 }) {
   const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  // slugTouched: ผู้ใช้แก้ slug เองแล้วหรือยัง — ถ้าแก้แล้วจะไม่ auto-gen ทับ
+  const [slugTouched, setSlugTouched] = useState(false);
   const [parentId, setParentId] = useState<number | "">("");
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const toSlug = (text: string) =>
-    text.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0E00-\u0E7F-]/g, "");
+  const effectiveSlug = slugTouched ? slug.trim() : toSlug(name);
+
+  // WHY: slug เป็น UNIQUE ใน DB — backend ตอบ 409 พร้อมระบุ field ที่ซ้ำแล้ว
+  //      (ดู category_command_service.go) แต่ยังเช็คซ้ำฝั่ง client ด้วย เพื่อเตือน
+  //      ตั้งแต่ตอนพิมพ์และปิดปุ่มบันทึก ไม่ต้องรอ round-trip ถึงจะรู้ว่าใช้ slug นี้ไม่ได้
+  const existingSlugs = useMemo(
+    () => new Set(flattenOptions(categories).map((c) => c.slug)),
+    [categories]
+  );
+  const slugTaken = effectiveSlug !== "" && existingSlugs.has(effectiveSlug);
+
+  const reset = () => {
+    setName("");
+    setSlug("");
+    setSlugTouched(false);
+    setParentId("");
+    setErrorMsg("");
+  };
 
   const handleSubmit = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !effectiveSlug || slugTaken) return;
     setSaving(true);
+    setErrorMsg("");
     try {
       await adminCategoryService.create({
         name: name.trim(),
-        slug: toSlug(name),
+        slug: effectiveSlug,
         is_active: true,
         ...(parentId !== "" && { parent_id: parentId }),
       });
       onCreated();
+      reset();
       onClose();
-      setName("");
-      setParentId("");
+    } catch (err) {
+      // WHY: เดิมมีแต่ try/finally ไม่มี catch — สร้างไม่สำเร็จแล้วเงียบสนิท
+      //      modal ปิดไม่ปิด ไม่มีข้อความ ผู้ใช้ไม่รู้เลยว่าติดอะไร
+      //      สาเหตุที่เจอบ่อยสุดคือ slug ซ้ำ (คอลัมน์ slug เป็น UNIQUE ใน DB)
+      // backend ตอบ 409 พร้อมระบุ field ที่ซ้ำแล้ว (ดู category_command_service.go)
+      // จึงเอาข้อความจริงมาแสดงได้ตรงๆ ไม่ต้องเดาสาเหตุเองเหมือนก่อน
+      const raw = err instanceof Error ? err.message : "";
+      setErrorMsg(raw || "สร้างหมวดหมู่ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setSaving(false);
     }
@@ -59,6 +103,11 @@ function CreateCategoryModal({
           </button>
         </div>
         <div className="space-y-4">
+          {errorMsg && (
+            <div className="rounded-xl bg-red-50 px-4 py-2.5 text-xs font-medium text-red-600">
+              {errorMsg}
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-xs font-medium text-secondary">ชื่อหมวดหมู่ *</label>
             <input
@@ -71,15 +120,48 @@ function CreateCategoryModal({
             />
           </div>
           <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-medium text-secondary">Slug *</label>
+              {slugTouched && (
+                <button
+                  onClick={() => { setSlugTouched(false); setSlug(""); }}
+                  className="text-[10px] font-medium text-primary hover:underline"
+                >
+                  สร้างอัตโนมัติจากชื่อ
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={effectiveSlug}
+              onChange={(e) => { setSlugTouched(true); setSlug(e.target.value); }}
+              placeholder="auto"
+              className={cn(
+                "w-full rounded-xl bg-surface-low/40 px-4 py-2.5 font-mono text-sm outline-none focus:ring-2 focus:ring-primary/20",
+                slugTaken && "ring-2 ring-error/40"
+              )}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            />
+            {slugTaken ? (
+              <p className="mt-1 text-[10px] font-medium text-red-600">
+                Slug นี้ถูกใช้ไปแล้ว — แก้ให้ไม่ซ้ำก่อนบันทึก
+              </p>
+            ) : (
+              <p className="mt-1 text-[10px] text-outline">ต้องไม่ซ้ำกับหมวดหมู่อื่น (สร้างอัตโนมัติจากชื่อ แก้เองได้)</p>
+            )}
+          </div>
+          <div>
             <label className="mb-1 block text-xs font-medium text-secondary">หมวดหมู่แม่ (ถ้ามี)</label>
             <select
               value={parentId}
               onChange={(e) => setParentId(e.target.value ? Number(e.target.value) : "")}
               className="w-full rounded-xl bg-surface-low/40 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="">-- ไม่ระบุ (root) --</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              <option value="">-- ไม่ระบุ (เป็นหมวดหมู่แม่/root) --</option>
+              {/* WHY: เดิม map จาก categories ตรงๆ ซึ่งเป็น tree root → เห็นแค่ระดับบนสุด
+                      เลือกหมวดย่อยเป็นแม่ไม่ได้เลย ทำให้สร้างลำดับชั้นเกิน 2 ชั้นไม่ได้ */}
+              {flattenOptions(categories).map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
               ))}
             </select>
           </div>
@@ -90,7 +172,7 @@ function CreateCategoryModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !name.trim()}
+            disabled={saving || !name.trim() || !effectiveSlug || slugTaken}
             className="gradient-primary rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/25 disabled:opacity-50"
           >
             {saving ? "กำลังบันทึก..." : "บันทึก"}
@@ -124,9 +206,6 @@ function CategoryRow({
     setEditName(cat.name);
     setEditing(true);
   };
-
-  const toSlug = (text: string) =>
-    text.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0E00-\u0E7F-]/g, "");
 
   const handleSaveEdit = async () => {
     if (!editName.trim()) return;

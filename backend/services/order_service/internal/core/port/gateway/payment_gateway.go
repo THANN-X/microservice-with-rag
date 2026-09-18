@@ -60,6 +60,11 @@ type PaymentGateway interface {
 	// WHY ต้อง verify signature?
 	//   - ป้องกัน attacker ที่ส่ง fake webhook มาบอกว่า "order XXX จ่ายแล้ว"
 	//   - gateway จะ sign payload ด้วย HMAC/RSA → เราต้อง verify ด้วย secret key
+	//
+	// Return contract — มี 3 กรณี:
+	//   (event, nil) — verify ผ่าน และเป็น event ที่ต้องประมวลผล
+	//   (nil, nil)   — verify ผ่าน แต่เป็น event type ที่ไม่เกี่ยวข้อง → caller ต้องตอบ 200 เฉยๆ
+	//   (nil, err)   — verify ไม่ผ่าน (signature ผิด/หาย) → caller ตอบ 4xx
 	VerifyWebhook(signature string, payload []byte) (*WebhookEvent, error)
 
 	Refund(ctx context.Context, chargeID string, amount float64) error

@@ -14,15 +14,8 @@ import {
 } from "lucide-react";
 import { cn, formatBaht } from "@/lib/utils";
 import { adminOrderHistoryService, adminOrderService } from "@/lib/services";
+import { adminOrderStatus } from "@/lib/order-status";
 import type { OrderHistory } from "@/lib/types";
-
-const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  PENDING: { label: "รอดำเนินการ", cls: "bg-amber-50 text-amber-700" },
-  CONFIRMED: { label: "ยืนยันแล้ว", cls: "bg-blue-50 text-blue-700" },
-  SHIPPED: { label: "จัดส่งแล้ว", cls: "bg-sky-50 text-sky-700" },
-  COMPLETED: { label: "สำเร็จ", cls: "bg-emerald-50 text-emerald-700" },
-  CANCELLED: { label: "ยกเลิก", cls: "bg-red-50 text-red-700" },
-};
 
 export default function AdminOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -89,7 +82,7 @@ export default function AdminOrderDetailPage() {
     );
   }
 
-  const status = STATUS_MAP[order.status] ?? STATUS_MAP.PENDING;
+  const status = adminOrderStatus(order.status);
   const canCancel = order.status !== "CANCELLED" && order.status !== "COMPLETED";
 
   return (

@@ -6,6 +6,7 @@ import (
 	service "auth_service/internal/core/port/service"
 	dto "auth_service/internal/core/port/service/dto"
 	"context"
+	"errors"
 	"errs"
 	"logs"
 )
@@ -37,13 +38,29 @@ func (a *adminService) RegisterAdmin(ctx context.Context, newAdminReq *dto.Creat
 		return nil, errs.NewValidationError("password must be at least 8 characters")
 	}
 
-	err := a.adminRepo.CreateAdmin(ctx, newAdminDomain)
+	// What: ตรวจว่า username นี้ถูกใช้แล้วหรือยัง ก่อน insert
+	// Why:  ถ้าปล่อยให้ DB unique constraint เป็นคนโยน error จะได้ 500 ที่ user อ่านไม่รู้เรื่อง
+	//       pattern เดียวกับ userService.RegisterUser ที่เช็ค email ซ้ำที่ service layer
+	// Note: FindByUsername คืน (nil, nil) เมื่อไม่เจอ — ต่างจาก userRepo ที่คืน domain error
+	existingAdmin, err := a.adminRepo.FindByUsername(ctx, newAdminDomain.Username)
 	if err != nil {
 		logs.Error(err)
 		return nil, errs.NewUnexpectedError()
 	}
+	if existingAdmin != nil {
+		return nil, errs.NewConflictError("username already exists")
+	}
 
-	return dto.ToAdminResponse(newAdminDomain), err
+	if err := a.adminRepo.CreateAdmin(ctx, newAdminDomain); err != nil {
+		logs.Error(err)
+		// Why: เช็คซ้ำด้านบนมี race — คนที่สองจะมาชน unique index ตรงนี้ ต้องได้ 409 เหมือนกัน
+		if errors.Is(err, domain.ErrDuplicateKey) {
+			return nil, errs.NewConflictError("username already exists")
+		}
+		return nil, errs.NewUnexpectedError()
+	}
+
+	return dto.ToAdminResponse(newAdminDomain), nil
 }
 
 // TODO: implement UpdateProfile — อัปเดต profile admin

@@ -34,7 +34,16 @@ func (s *categoryCommandService) CreateCategory(ctx context.Context, req *dto.Cr
 		IsActive:    req.IsActive,
 		ParentID:    req.ParentID,
 	}
-	return s.cmdRepo.CreateCategory(ctx, category)
+	if err := s.cmdRepo.CreateCategory(ctx, category); err != nil {
+		return toCategoryWriteError(err, req.Slug)
+	}
+	return nil
+}
+
+// toCategoryWriteError แปลง error ตอนเขียน category เป็น HTTP-friendly error
+// slug เป็น unique constraint — ชนกันคือ input ผิด ต้องเป็น 409 พร้อมบอกว่าซ้ำที่ field ไหน
+func toCategoryWriteError(err error, slug string) error {
+	return conflictOrUnexpected(err, "Slug \""+slug+"\" is already used by another category")
 }
 
 // UpdateCategory ใช้ pattern "Load → Modify → Save" (Optimistic Update)
@@ -61,7 +70,10 @@ func (s *categoryCommandService) UpdateCategory(ctx context.Context, req *dto.Up
 		ParentID:    req.ParentID,
 	})
 
-	return s.cmdRepo.UpdateCategory(ctx, existing)
+	if err := s.cmdRepo.UpdateCategory(ctx, existing); err != nil {
+		return toCategoryWriteError(err, req.Slug)
+	}
+	return nil
 }
 
 // DeleteCategory ตรวจสอบว่า Category มีอยู่จริงก่อนลบ

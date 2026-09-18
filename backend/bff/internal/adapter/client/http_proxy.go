@@ -91,6 +91,12 @@ func (p *ServiceProxy) Forward(c *fiber.Ctx, targetPath string) error {
 	if cookie := c.Get("Cookie"); cookie != "" {
 		req.Header.Set("Cookie", cookie)
 	}
+	// Stripe-Signature: HMAC ที่ Stripe เซ็น raw body มาให้ — order-service ใช้ verify webhook
+	// Why: ถ้าไม่ forward → order-service ได้ signature ว่าง → ConstructEvent fail → 400
+	//      ทุกครั้งที่ Stripe ยิง /webhook/payment (order ค้างที่ AWAITING_PAYMENT ทั้งที่จ่ายแล้ว)
+	if sig := c.Get("Stripe-Signature"); sig != "" {
+		req.Header.Set("Stripe-Signature", sig)
+	}
 
 	// What: Forward user identity ที่ BFF validate แล้วไปยัง backend
 	// Why:  BFF ทำ JWT validation แล้ว → services ไม่ต้อง validate เอง

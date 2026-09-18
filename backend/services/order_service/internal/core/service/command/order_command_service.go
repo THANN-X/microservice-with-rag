@@ -456,7 +456,11 @@ func (s *orderCommandService) ProcessPayment(ctx context.Context, orderID string
 					return err
 				}
 			}
-			return nil
+			// WHY ต้อง SaveDomainEvents ทั้งที่ path นี้ไม่มี compensation?
+			//   - MarkAwaitingPayment raise OrderAwaitingPaymentEvent เพื่อให้ order_history
+			//     ตามสถานะทัน ถ้าไม่ flush ลง outbox ที่นี่ event จะถูกทิ้งไปเงียบๆ
+			//   - repay path (order = AWAITING_PAYMENT อยู่แล้ว) ไม่มี event → Pop คืน [] → no-op
+			return s.cmdRepo.SaveDomainEvents(txCtx, order)
 		}); err != nil {
 			logs.Error(err)
 			return nil, errs.NewUnexpectedError()
@@ -486,7 +490,17 @@ func (s *orderCommandService) HandlePaymentWebhook(ctx context.Context, req *dto
 	// 1. Verify webhook signature
 	webhookEvent, err := s.paymentGateway.VerifyWebhook(req.Signature, req.Payload)
 	if err != nil {
+		// WHY log err ก่อน return?
+		//   - สาเหตุที่ verify ไม่ผ่านมีหลายอย่าง (signature ผิด, header หาย, API version ไม่ตรง,
+		//     event type ที่ยังไม่รองรับ) แต่ client ได้รับข้อความเดียวกันหมด
+		//   - ถ้าไม่ log สาเหตุจริง จะ debug 400 จาก Stripe ไม่ได้เลย
+		logs.Error(err)
 		return errs.NewValidationError("invalid webhook signature")
+	}
+	// event ที่ verify ผ่านแต่ไม่เกี่ยวกับเรา (payment_intent.created ฯลฯ) → ตอบ 200 แล้วจบ
+	// ห้ามคืน error เพราะจะทำให้ Stripe retry ซ้ำไปเรื่อยๆ โดยไม่มีทางสำเร็จ
+	if webhookEvent == nil {
+		return nil
 	}
 
 	// 2. Find payment by charge ID

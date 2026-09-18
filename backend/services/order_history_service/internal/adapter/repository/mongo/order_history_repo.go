@@ -254,9 +254,25 @@ func (r *orderHistoryRepository) FindAll(ctx context.Context, filter domain.Orde
 	return orders, total, nil
 }
 
-// SumRevenue คืนค่า total orders ทั้งหมด และ total revenue (ผลรวม total_amount ทุก order) ผ่าน MongoDB aggregation
+// revenueStatuses คือสถานะที่ถือว่า "เก็บเงินได้จริง" — ใช้เป็นฐานของตัวเลขบน dashboard
+//
+// WHY ไม่นับสถานะอื่น?
+//   - PENDING / CONFIRMED / AWAITING_PAYMENT: ยังไม่ได้จ่าย จะนับเป็นยอดขายไม่ได้
+//   - CANCELLED: ยกเลิกไปแล้ว เงินไม่เคยเข้าหรือคืนไปแล้ว
+//
+// COMPLETED ใส่ไว้ล่วงหน้าเพราะเป็นปลายทางของ order ที่จ่ายแล้ว (ยังไม่มี fulfillment flow)
+// ถ้าไม่ใส่ ยอดขายจะหายไปทันทีที่วันหนึ่ง order ถูก mark เป็น COMPLETED
+var revenueStatuses = bson.A{"PAID", "COMPLETED"}
+
+// SumRevenue คืนจำนวน order และยอดขายรวม โดยนับเฉพาะ order ที่เก็บเงินได้จริง
+//
+// WHY ต้อง $match ก่อน $group?
+//   - เดิมรวม total_amount ของทุก order รวม CANCELLED ด้วย → ยอดขายบน dashboard สูงเกินจริง
+//   - นับ order ชุดเดียวกับที่คิดเงิน ทำให้ตัวเลขสองใบบน dashboard อ่านคู่กันได้:
+//     "ขายได้ N ออเดอร์ เป็นเงิน X บาท" ไม่ใช่คนละฐานกัน
 func (r *orderHistoryRepository) SumRevenue(ctx context.Context) (int64, float64, error) {
 	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"status": bson.M{"$in": revenueStatuses}}}},
 		{{Key: "$group", Value: bson.M{
 			"_id":           nil,
 			"total_orders":  bson.M{"$sum": 1},

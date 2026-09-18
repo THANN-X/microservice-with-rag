@@ -47,8 +47,24 @@ func (h *productEventHandler) Handle(ctx context.Context, msg *sarama.ConsumerMe
 	logs.Info(fmt.Sprintf("catalog: received event=%s topic=%s partition=%d offset=%d",
 		eventType, msg.Topic, msg.Partition, msg.Offset))
 
-	// messageID สร้างจาก topic:partition:offset — unique ต่อ message แน่นอน
-	messageID := fmt.Sprintf("%s:%d:%d", msg.Topic, msg.Partition, msg.Offset)
+	// messageID = EventID header (outbox event UUID ที่ producer แนบมา)
+	//
+	// WHY ไม่ใช้ topic:partition:offset เป็นหลัก?
+	//   - offset คือ "ตำแหน่งบนสายพาน" ไม่ใช่ชื่อของข้อความ ผูกกับ topic instance นั้นๆ
+	//   - ย้าย Kafka cluster / สร้าง topic ใหม่ → offset เริ่มนับ 0 ใหม่ และ consumer นี้ตั้ง
+	//     OffsetOldest → event คนละใบได้ ID ซ้ำกับของเก่า → inbox ตอบว่า "processed แล้ว"
+	//     → event ใหม่ถูกทิ้งเงียบ (data loss ไม่ใช่แค่ประมวลผลซ้ำ)
+	//   - EventID = UUID ของ outbox row unique จริงข้าม cluster/topic/replay
+	//   - product_service outbox processor แนบ EventID header มาให้ทุก event อยู่แล้ว
+	//
+	// Fallback ไป offset-based ไว้รองรับ message เก่าที่ค้างใน topic ตั้งแต่ก่อน producer
+	// ใส่ header (ยังดีกว่าไม่มี ID เลย) พร้อม log เตือนให้เห็นว่าเจอของเก่า
+	messageID := getHeaderValue(msg.Headers, "EventID")
+	if messageID == "" {
+		logs.Warn(fmt.Sprintf("catalog: no EventID header, falling back to offset-based messageID. topic=%s partition=%d offset=%d",
+			msg.Topic, msg.Partition, msg.Offset))
+		messageID = fmt.Sprintf("%s:%d:%d", msg.Topic, msg.Partition, msg.Offset)
+	}
 
 	switch eventType {
 
@@ -145,8 +161,13 @@ func (h *productEventHandler) Handle(ctx context.Context, msg *sarama.ConsumerMe
 // extractEventType อ่าน EventType จาก Kafka Header เท่านั้น
 // body fallback จัดการใน Handle() เพื่อให้ log บอก topic/partition/offset ได้
 func extractEventType(msg *sarama.ConsumerMessage) string {
-	for _, h := range msg.Headers {
-		if string(h.Key) == "EventType" {
+	return getHeaderValue(msg.Headers, "EventType")
+}
+
+// getHeaderValue อ่านค่า Kafka header ตาม key คืน "" ถ้าไม่มี
+func getHeaderValue(headers []*sarama.RecordHeader, key string) string {
+	for _, h := range headers {
+		if string(h.Key) == key {
 			return string(h.Value)
 		}
 	}

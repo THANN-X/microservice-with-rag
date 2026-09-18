@@ -68,14 +68,17 @@ func (s *authService) LoginUser(ctx context.Context, email, password, ipAddress,
 	}
 
 	// What: ออก short-lived access token (เช่น 15 นาที)
-	accessToken, err := s.jwtService.GenerateToken(user.ID, "customer", jwtutils.AccessToken)
+	// Why: ใช้ user.Role จาก DB ไม่ hardcode — ถ้าเพิ่ม role ใหม่ใน user table (staff, vip)
+	//      token จะสะท้อนค่าจริงทันทีโดยไม่ต้องแก้โค้ดตรงนี้อีก
+	//      ค่าไม่เคยว่างเพราะ UserEntity มี `default:'customer';not null` และ repo sync กลับมาให้
+	accessToken, err := s.jwtService.GenerateToken(user.ID, user.Role, jwtutils.AccessToken)
 	if err != nil {
 		logs.Error(err)
 		return nil, errs.NewValidationError("access generate token error")
 	}
 
 	// What: ออก long-lived refresh token (7 วัน) ใช้ขอ access token ใหม่
-	refreshToken, err := s.jwtService.GenerateToken(user.ID, "customer", jwtutils.RefreshToken)
+	refreshToken, err := s.jwtService.GenerateToken(user.ID, user.Role, jwtutils.RefreshToken)
 	if err != nil {
 		logs.Error(err)
 		return nil, errs.NewValidationError("refresh generate token error")
@@ -318,14 +321,15 @@ func (s *authService) GoogleLoginUser(ctx context.Context, idToken, ipAddress, d
 		user = newUser
 	}
 
-	// What: ออก JWT tokens เหมือน login ปกติ
-	accessToken, err := s.jwtService.GenerateToken(user.ID, "customer", jwtutils.AccessToken)
+	// What: ออก JWT tokens เหมือน login ปกติ — ใช้ user.Role จาก DB ไม่ hardcode
+	// Note: กรณี find-or-create ค่า Role มาจาก userRepo.CreateUser ที่ sync กลับจาก entity
+	accessToken, err := s.jwtService.GenerateToken(user.ID, user.Role, jwtutils.AccessToken)
 	if err != nil {
 		logs.Error(err)
 		return nil, errs.NewValidationError("access generate token error")
 	}
 
-	refreshToken, err := s.jwtService.GenerateToken(user.ID, "customer", jwtutils.RefreshToken)
+	refreshToken, err := s.jwtService.GenerateToken(user.ID, user.Role, jwtutils.RefreshToken)
 	if err != nil {
 		logs.Error(err)
 		return nil, errs.NewValidationError("refresh generate token error")

@@ -14,4 +14,9 @@ var (
 	ErrIncorrectPassword = errors.New("incorrect old password")
 	// What: ไม่พบ session ที่ตรงกับ refresh token ที่ส่งมา
 	ErrSessionNotFound = errors.New("session not found")
+
+	// ErrDuplicateKey ใช้เมื่อชนกับ unique index (user.email, admin.username)
+	// Service layer แปลงเป็น 409 Conflict — เป็น safety net ของการเช็คซ้ำก่อน insert
+	// ที่มี race condition อยู่ (สมัครพร้อมกันสองคนด้วยค่าเดียวกัน)
+	ErrDuplicateKey = errors.New("duplicate key")
 )

@@ -3,21 +3,12 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { orderService } from "@/lib/services";
+import { shopOrderStatus } from "@/lib/order-status";
 import { useAuth } from "@/context/auth-context";
 import type { Order } from "@/lib/types";
 import { formatBaht } from "@/lib/utils";
 import Image from "next/image";
 import Link from "next/link";
-
-const statusMap: Record<string, { label: string; color: string }> = {
-  PENDING:           { label: "รอดำเนินการ",    color: "bg-amber-100 text-amber-800" },
-  AWAITING_PAYMENT:  { label: "รอชำระเงิน",     color: "bg-amber-100 text-amber-800" },
-  PAID:              { label: "ชำระเงินแล้ว",   color: "bg-emerald-100 text-emerald-800" },
-  CONFIRMED:         { label: "ยืนยันแล้ว",     color: "bg-blue-100 text-blue-800" },
-  SHIPPED:           { label: "กำลังจัดส่ง",    color: "bg-secondary-container/30 text-on-secondary-container" },
-  COMPLETED:         { label: "จัดส่งสำเร็จ",   color: "bg-tertiary-container/30 text-on-tertiary-container" },
-  CANCELLED:         { label: "ยกเลิก",         color: "bg-error-container/30 text-on-error-container" },
-};
 
 export default function OrderDetailPage() {
   const { id } = useParams();
@@ -113,7 +104,7 @@ export default function OrderDetailPage() {
     );
   }
 
-  const status = statusMap[order.status] || statusMap.PENDING;
+  const status = shopOrderStatus(order.status);
 
   return (
     <>

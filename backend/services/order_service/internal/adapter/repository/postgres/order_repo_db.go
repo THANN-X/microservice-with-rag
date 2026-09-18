@@ -15,7 +15,6 @@ import (
 	"database"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"order_service/internal/adapter/repository/postgres/entity"
 	"order_service/internal/core/domain"
 	port "order_service/internal/core/port/repo"
@@ -119,25 +118,19 @@ func (r *orderRepository) SaveDomainEvents(ctx context.Context, order *domain.Or
 			return err
 		}
 
-		// WHY AggregateID แตกต่างตาม EventType?
-		//   - OrderCreatedEvent: AggregateID = order.ID → product_service ใช้ key นี้เป็น MessageID
-		//     → ถ้า event replay ด้วย key เดิม inbox block ได้ (exactly-once)
-		//   - OrderCancelledEvent: AggregateID = uuid ใหม่ → แต่ละ cancel event มี unique key
-		//     → ป้องกัน inbox ที่ product_service block cancel event ที่ควรจะผ่าน
-		//     (เช่น RequestStockRelease ซึ่งเป็น cancel event คนละตัวกับ cancel ปกติ)
-		//   - OrderConfirmedEvent: AggregateID = order.ID → informational, ot action event
-		var aggregateID string
-		switch evt.EventName() {
-		case "OrderCancelled":
-			// WHY UUID ใหม่? ดู comment ด้านบน
-			aggregateID = fmt.Sprintf("cancel-%s", order.ID)
-		default:
-			aggregateID = order.ID
-		}
-
+		// WHY AggregateID = order.ID เสมอ (ทุก event type)?
+		//   - AggregateID ถูกใช้เป็น Kafka message key → ทุก event ของ order เดียวกันลง partition
+		//     เดียวกัน → consumer เห็นตามลำดับจริง (CREATED ก่อน CONFIRMED ก่อน CANCELLED)
+		//   - เดิมมี switch ที่ตั้งใจให้ cancel event ใช้ key "cancel-<id>" แต่ case เทียบกับ
+		//     "OrderCancelled" ขณะที่ EventName() คืน "ORDER_CANCELLED" → เงื่อนไขไม่เคยเป็นจริง
+		//     พฤติกรรมจริงคือใช้ order.ID มาตลอด จึงลบ switch ทิ้งให้ตรงกับความจริง
+		//   - เจตนาเดิม (กัน inbox ที่ปลายทาง block cancel event ที่ควรผ่าน) ตอนนี้ถูกแทนด้วย
+		//     header "EventID" = outbox UUID ซึ่ง unique ต่อ event อยู่แล้ว consumer ทุกตัวใช้ค่านั้น
+		//     เป็น inbox key ไม่ได้ใช้ Kafka key → ไม่มีอะไรหายไปจากการลบ switch
+		//   - ถ้าจะรื้อฟื้นเจตนาเดิมต้องระวัง: เปลี่ยน key = เปลี่ยน partition = เสีย ordering
 		outboxMsg := domain.NewOutboxMessage(
 			"order.events",
-			aggregateID,
+			order.ID,
 			"ORDER",
 			evt.EventName(),
 			string(payloadBytes),

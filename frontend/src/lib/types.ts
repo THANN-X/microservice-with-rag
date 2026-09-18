@@ -265,7 +265,7 @@ export interface PaymentResponse {
 export interface OrderHistory {
   order_id: string;
   customer_id: number;
-  status: string;
+  status: OrderStatus;
   total_amount: number;
   items: OrderHistoryItem[];
   shipping_address: ShippingAddress;

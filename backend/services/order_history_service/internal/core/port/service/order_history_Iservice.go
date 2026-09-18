@@ -10,7 +10,10 @@ import (
 type OrderHistoryCommandService interface {
 	HandleOrderCreated(ctx context.Context, messageID string, evt *events.OrderCreatedEvent) error
 	HandleOrderConfirmed(ctx context.Context, messageID string, evt *events.OrderConfirmedEvent) error
+	HandleOrderPaid(ctx context.Context, messageID string, evt *events.OrderPaidEvent) error
 	HandleOrderCancelled(ctx context.Context, messageID string, evt *events.OrderCancelledEvent) error
+	HandleOrderAwaitingPayment(ctx context.Context, messageID string, evt *events.OrderAwaitingPaymentEvent) error
+	HandleOrderReservationFailed(ctx context.Context, messageID string, evt *events.OrderReservationFailedEvent) error
 }
 
 // OrderHistoryQueryService — Read Side ให้ user ดูประวัติ order

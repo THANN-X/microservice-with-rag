@@ -7,25 +7,22 @@ import {
   LayoutDashboard,
   Package,
   ShoppingCart,
-  Users,
   Settings,
   Tag,
   Layers,
-  Search,
-  Bell,
-  HelpCircle,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
 
+// NOTE: เมนู "Users" (/admin/users) ถูกเอาออกชั่วคราว — ยังไม่มีไฟล์ page.tsx ของ route นี้
+//       กดแล้วเจอ 404 ใส่กลับได้ทันทีเมื่อสร้างหน้าเสร็จ
 const NAV_ITEMS = [
   { href: "/admin", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/admin/products", icon: Package, label: "Products" },
   { href: "/admin/categories", icon: Tag, label: "Categories" },
   { href: "/admin/attributes", icon: Layers, label: "Attributes" },
   { href: "/admin/orders", icon: ShoppingCart, label: "Orders" },
-  { href: "/admin/users", icon: Users, label: "Users" },
   { href: "/admin/admins", icon: Settings, label: "Admins" },
 ];
 
@@ -65,6 +62,13 @@ function AdminLayoutInner({ children }: { children: ReactNode }) {
 
   const isActive = (href: string) =>
     href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+
+  // ชื่อหน้าปัจจุบันสำหรับ breadcrumb — หา match ที่ยาวที่สุดเพื่อรองรับ nested route
+  // เช่น /admin/orders/123 ต้องได้ "Orders" ไม่ใช่ "Dashboard"
+  const currentPageLabel =
+    NAV_ITEMS.filter((item) => isActive(item.href)).sort(
+      (a, b) => b.href.length - a.href.length
+    )[0]?.label ?? "Dashboard";
 
   /* Login page gets no chrome */
   if (isLoginPage) return <>{children}</>;
@@ -140,31 +144,19 @@ function AdminLayoutInner({ children }: { children: ReactNode }) {
       <div className="ml-64 flex flex-1 flex-col">
         {/* Top Header */}
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-surface-highest/60 bg-white/80 px-8 backdrop-blur-md">
-          {/* Search */}
-          <div className="flex flex-1 items-center max-w-sm">
-            <div className="relative w-full group">
-              <Search
-                size={15}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline transition-colors group-focus-within:text-primary"
-              />
-              <input
-                type="text"
-                placeholder="ค้นหาข้อมูล..."
-                className="w-full rounded-xl border border-surface-highest bg-surface/50 py-2 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-outline focus:border-primary/30 focus:bg-white focus:ring-2 focus:ring-primary/10"
-              />
-            </div>
+          {/* Breadcrumb
+              WHY: ตรงนี้เคยเป็นช่องค้นหา + กระดิ่งแจ้งเตือน + ปุ่มช่วยเหลือ ที่กดแล้วไม่มีอะไรเกิดขึ้น
+                   ช่องค้นหาซ้ำซ้อนกับช่องค้นหาในแต่ละหน้าจนผู้ใช้พิมพ์ผิดช่อง
+                   ส่วนกระดิ่งมีจุดแดงค้างตลอดเหมือนมีของใหม่ตลอดเวลา
+                   เอาออกก่อนจนกว่าจะมีของจริงมารองรับ แล้วใส่ breadcrumb ที่บอกตำแหน่งจริงแทน */}
+          <div className="flex flex-1 items-center gap-2 text-sm">
+            <span className="text-outline">Admin</span>
+            <span className="text-outline">/</span>
+            <span className="font-medium text-on-surface">{currentPageLabel}</span>
           </div>
 
           {/* Right */}
           <div className="flex items-center gap-1">
-            <button className="relative rounded-xl p-2 text-outline transition-colors hover:bg-surface hover:text-on-surface">
-              <Bell size={18} />
-              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-error" />
-            </button>
-            <button className="rounded-xl p-2 text-outline transition-colors hover:bg-surface hover:text-on-surface">
-              <HelpCircle size={18} />
-            </button>
-            <div className="mx-3 h-6 w-px bg-surface-highest" />
             <div className="flex items-center gap-2.5 rounded-xl border border-surface-highest bg-surface/60 px-3 py-1.5 transition-colors hover:bg-surface">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg editorial-gradient text-[11px] font-bold text-white shadow-sm">
                 {adminName.charAt(0).toUpperCase()}
