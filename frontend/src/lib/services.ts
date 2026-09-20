@@ -13,7 +13,6 @@ import type {
   LoginRequest,
   LoginAdminRequest,
   LoginResponse,
-  LogoutRequest,
   RegisterRequest,
   UserProfile,
   AdminProfile,
