@@ -46,7 +46,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # อ่าน node version จาก frontend/.nvmrc ซึ่งต้องตรงกับ FROM node:22-alpine ใน frontend/Dockerfile
+          # WHY: npm แต่ละ major เขียน/ตรวจ package-lock.json ไม่เหมือนกัน — npm 11 ปล่อยผ่าน dangling edge
+          #      ของ optional/peer dep แต่ npm 10 ที่มากับ node 20/22 ไม่ยอม ถ้า CI ใช้ node คนละตัวกับ Dockerfile
+          #      lock ที่ CI บอกว่าผ่านอาจทำให้ docker build พังทีหลัง (เคยเกิดมาแล้วกับ @emnapi/* ตอน sharp 0.35.4)
+          # NOTE: จะเปลี่ยน node version ต้องแก้ทั้ง .nvmrc และ Dockerfile ให้ตรงกันเสมอ
+          node-version-file: frontend/.nvmrc
           cache: 'npm'                   
           cache-dependency-path: frontend/package-lock.json
 
