@@ -50,7 +50,7 @@ func TestMarkReservationFailed_RaisesReservationFailedEvent(t *testing.T) {
 	}
 
 	if order.Status != OrderStatusConfirmed {
-		t.Errorf("status = %q, want %q", order.Status, OrderStatusCancelled)
+		t.Errorf("status = %q, want %q", order.Status, OrderStatusConfirmed)
 	}
 
 	evts := order.PopDomainEvents()
