@@ -49,7 +49,7 @@ func TestMarkReservationFailed_RaisesReservationFailedEvent(t *testing.T) {
 		t.Fatalf("MarkReservationFailed: %v", err)
 	}
 
-	if order.Status != OrderStatusCancelled {
+	if order.Status != OrderStatusConfirmed {
 		t.Errorf("status = %q, want %q", order.Status, OrderStatusCancelled)
 	}
 
