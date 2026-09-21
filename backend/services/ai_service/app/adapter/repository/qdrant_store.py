@@ -143,6 +143,6 @@ class QdrantVectorStore(VectorStorePort):
                 variants=variants,
                 is_active=payload.get("is_active", True)
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Error getting product %d from Qdrant", product_id)
             return None
