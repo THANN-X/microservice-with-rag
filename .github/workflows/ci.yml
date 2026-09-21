@@ -27,7 +27,7 @@ jobs:
             if [ -f "$dir/go.mod" ]; then
               found=$((found + 1))
               echo "==> building $dir"
-             (cd "$dir" && go vet ./... && go build ./... && go test ./...) || fail=$((fail+1))
+              (cd "$dir" && go vet ./... && go build ./... && go test ./...) || fail=$((fail + 1))
             fi
           done
 
@@ -36,7 +36,7 @@ jobs:
             exit 1
           fi
 
-          echo "==> built $found modules"
+          echo "==> built $found modules, $fail failed"
           exit $fail
 
   build-frontend:
@@ -54,7 +54,56 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
       - name: Build
         working-directory: frontend
         run: npm run build
-        
+  
+  # ruff เป็น static analyzer อ่านไฟล์ .py เป็นข้อความ ไม่ต้องใช้ dependency ของโปรเจกต์เลย
+  # แยกออกมาเป็น job ของตัวเองเพื่อ fail fast — รู้ผลใน ~20 วินาที ไม่ต้องรอ torch ดาวน์โหลดจบก่อน
+  lint-python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/services/ai_service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Lint (ruff)
+        run: |
+          pip install ruff==0.8.4
+          ruff check .
+
+  test-python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/services/ai_service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: backend/services/ai_service/requirements*.txt
+
+      # ลง torch แบบ CPU-only ก่อน requirements ด้วยเหตุผลเดียวกับ Dockerfile:12-17
+      # WHY:  sentence-transformers ดึง torch มาเป็น dependency และ wheel ปกติบน PyPI
+      #       ลากตัว CUDA + nvidia-* มาด้วยหลาย GB ทำให้ job ช้าและเสี่ยงชน disk limit ของ runner
+      # NOTE: ห้ามใส่ --no-cache-dir (ต่างจาก Dockerfile) เพราะ cache: 'pip' ด้านบน
+      #       แคช pip cache directory ถ้าสั่งไม่ให้เขียนก็ไม่เหลืออะไรให้แคช
+      # NOTE: cache key hash จาก requirements*.txt เท่านั้น ไม่รู้จัก --index-url
+      #       ถ้าเคยแคชก้อน CUDA ไว้ ต้องล้าง cache ใน Actions → Caches ก่อน
+      - name: Install dependencies
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-dev.txt
+
+      - name: Test (pytest)
+        run: pytest -v

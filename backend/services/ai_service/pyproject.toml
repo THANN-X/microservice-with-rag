@@ -1,0 +1,15 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["app", "tests"]
+
+[tool.ruff]
+line-length = 100
+exclude = [
+    # โค้ดที่ protoc generate ให้ — เราไม่ได้เขียนเอง และ regenerate ทับทุกครั้งที่ .proto เปลี่ยน
+    "app/adapter/grpc/generated",
+    # สคริปต์ทดลอง/ดีบักเฉพาะกิจ ไม่ได้ deploy ไม่ควรบล็อก CI
+    "debug_lab",
+]
+
+[tool.ruff.lint]
+extend-select = ["I"]
