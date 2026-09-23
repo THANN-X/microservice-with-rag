@@ -136,7 +136,7 @@ class ProductEventConsumer:
         if not product_id:
             logger.warning("Product upsert event payload missing product ID")
             return
-            
+
         name = body.get("name") or body.get("Name") or ""
         description = body.get("description") or body.get("Description") or ""
 
@@ -158,7 +158,7 @@ class ProductEventConsumer:
         if not product_id or not variant_id:
             logger.warning("PRODUCT_VARIANT_ADDED payload missing product_id or variant_id")
             return
-        
+
         product = self._get_product_sync(product_id)
         if not product:
             logger.warning("Product %s not found in vector store to add variant", product_id)
@@ -177,9 +177,11 @@ class ProductEventConsumer:
             stock=int(body.get("stock") or body.get("Stock") or 0),
             attributes=attrs,
         )
-        
+
         # Add or update variant
-        existing_idx = next((i for i, v in enumerate(product.variants) if v.variant_id == variant.variant_id), -1)
+        existing_idx = next(
+            (i for i, v in enumerate(product.variants) if v.variant_id == variant.variant_id), -1
+        )
         if existing_idx >= 0:
             product.variants[existing_idx] = variant
         else:
@@ -194,7 +196,7 @@ class ProductEventConsumer:
         if not product_id or not variant_id:
             logger.warning("PRODUCT_PRICE_CHANGED payload missing product_id or variant_id")
             return
-            
+
         logger.info(
             "Price changed for product %s variant %s: %s -> %s",
             product_id,
@@ -202,18 +204,18 @@ class ProductEventConsumer:
             body.get("old_price") or body.get("OldPrice"),
             new_price,
         )
-        
+
         product = self._get_product_sync(product_id)
         if not product:
             return
-            
+
         updated = False
         for v in product.variants:
             if v.variant_id == variant_id:
                 v.price = float(new_price)
                 updated = True
                 break
-                
+
         if updated:
             self._embed_and_upsert(product)
 
@@ -236,9 +238,11 @@ class ProductEventConsumer:
         variant_id = body.get("variant_id") or body.get("VariantID")
         new_stock = body.get("new_stock") or body.get("NewStock")
         if not product_id or not variant_id or new_stock is None:
-            logger.warning("STOCK_ADJUSTED/UPDATED payload missing product_id, variant_id or new_stock")
+            logger.warning(
+                "STOCK_ADJUSTED/UPDATED payload missing product_id, variant_id or new_stock"
+            )
             return
-            
+
         logger.info(
             "Stock adjusted/updated for product %s variant %s: %s -> %s",
             product_id,
@@ -246,18 +250,18 @@ class ProductEventConsumer:
             body.get("old_stock") or body.get("OldStock"),
             new_stock,
         )
-        
+
         product = self._get_product_sync(product_id)
         if not product:
             return
-            
+
         updated = False
         for v in product.variants:
             if v.variant_id == variant_id:
                 v.stock = int(new_stock)
                 updated = True
                 break
-                
+
         if updated:
             self._embed_and_upsert(product)
 
@@ -266,14 +270,14 @@ class ProductEventConsumer:
         is_active = body.get("is_active")
         if is_active is None:
             is_active = body.get("IsActive", True)
-            
+
         if not product_id:
             return
-            
+
         product = self._get_product_sync(product_id)
         if not product:
             return
-            
+
         product.is_active = bool(is_active)
         self._embed_and_upsert(product)
 
@@ -283,21 +287,21 @@ class ProductEventConsumer:
         is_active = body.get("is_active")
         if is_active is None:
             is_active = body.get("IsActive", True)
-            
+
         if not product_id or not variant_id:
             return
-            
+
         product = self._get_product_sync(product_id)
         if not product:
             return
-            
+
         updated = False
         for v in product.variants:
             if v.variant_id == variant_id:
                 v.is_active = bool(is_active)
                 updated = True
                 break
-                
+
         if updated:
             self._embed_and_upsert(product)
 
@@ -306,18 +310,18 @@ class ProductEventConsumer:
         categories_data = body.get("categories") or body.get("Categories", [])
         if not product_id:
             return
-            
+
         product = self._get_product_sync(product_id)
         if not product:
             return
-            
+
         categories = []
         for cat in categories_data:
             if isinstance(cat, dict):
                 name = cat.get("name") or cat.get("Name")
                 if name:
                     categories.append(name)
-                    
+
         product.categories = categories
         self._embed_and_upsert(product)
 

@@ -1,4 +1,5 @@
 """Smoke test เริ่มต้น — ทดสอบ _build_context ที่เป็น pure function"""
+
 from app.core.service.chat_service import ChatService
 
 

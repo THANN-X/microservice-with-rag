@@ -27,14 +27,19 @@ class QdrantVectorStore(VectorStorePort):
     async def ensure_collection(self) -> None:
         collections = await self._client.get_collections()
         names = [c.name for c in collections.collections]
-        
+
         if self._collection in names:
             try:
                 info = await self._client.get_collection(self._collection)
-                if hasattr(info.config.params.vectors, 'size'):
+                if hasattr(info.config.params.vectors, "size"):
                     current_dim = info.config.params.vectors.size
                     if current_dim != settings.EMBEDDING_DIM:
-                        logger.warning("Dimension mismatch for collection %s: expected %d, got %d. Deleting collection...", self._collection, settings.EMBEDDING_DIM, current_dim)
+                        logger.warning(
+                            "Dimension mismatch for collection %s: expected %d, got %d. Deleting collection...",
+                            self._collection,
+                            settings.EMBEDDING_DIM,
+                            current_dim,
+                        )
                         await self._client.delete_collection(self._collection)
                         names.remove(self._collection)
             except Exception as e:
@@ -85,7 +90,9 @@ class QdrantVectorStore(VectorStorePort):
             points_selector=[product_id],
         )
 
-    async def search(self, query_embedding: list[float], top_k: int = 5, score_threshold: float = 0.5) -> list[ProductResult]:
+    async def search(
+        self, query_embedding: list[float], top_k: int = 5, score_threshold: float = 0.5
+    ) -> list[ProductResult]:
         results = await self._client.query_points(
             collection_name=self._collection,
             query=query_embedding,
@@ -118,30 +125,32 @@ class QdrantVectorStore(VectorStorePort):
                 collection_name=self._collection,
                 ids=[product_id],
                 with_payload=True,
-                with_vectors=False
+                with_vectors=False,
             )
             if not results:
                 return None
-            
+
             payload = results[0].payload or {}
             variants = []
             for v in payload.get("variants", []):
-                variants.append(VariantInfo(
-                    variant_id=v.get("variant_id", 0),
-                    sku=v.get("sku", ""),
-                    name=v.get("name", ""),
-                    price=v.get("price", 0.0),
-                    stock=v.get("stock", 0),
-                    attributes=v.get("attributes", {}),
-                ))
-            
+                variants.append(
+                    VariantInfo(
+                        variant_id=v.get("variant_id", 0),
+                        sku=v.get("sku", ""),
+                        name=v.get("name", ""),
+                        price=v.get("price", 0.0),
+                        stock=v.get("stock", 0),
+                        attributes=v.get("attributes", {}),
+                    )
+                )
+
             return ProductDocument(
                 product_id=payload.get("product_id", product_id),
                 name=payload.get("name", ""),
                 description=payload.get("description", ""),
                 categories=payload.get("categories", []),
                 variants=variants,
-                is_active=payload.get("is_active", True)
+                is_active=payload.get("is_active", True),
             )
         except Exception:
             logger.exception("Error getting product %d from Qdrant", product_id)
