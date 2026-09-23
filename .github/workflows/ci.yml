@@ -85,6 +85,15 @@ jobs:
           pip install ruff==0.8.4
           ruff check .
 
+      # format --check ไม่แก้ไฟล์ แค่ตอบว่า "ถ้ารัน ruff format ตอนนี้ ผลจะต่างจากที่ commit มาไหม"
+      # ใช้ ruff ตัวที่ step บน pip install ไว้แล้ว เพราะทุก step ใน job เดียวกันอยู่บน runner เครื่องเดียวกัน
+      # WHY: เรารับหน้าที่คุมความยาวบรรทัดด้วย formatter แทน E501 (ดู ignore ใน pyproject.toml)
+      #      ถ้าไม่มี step นี้ ก็เท่ากับไม่มีใครคุมเลย
+      # NOTE: เวอร์ชัน ruff ต้อง pin ให้ตรงกับที่ dev รันในเครื่องเสมอ เพราะ formatter ต่างเวอร์ชันตัดบรรทัด
+      #       ไม่เหมือนกัน ถ้าปล่อยลอย วันที่ ruff ออกเวอร์ชันใหม่ CI จะแดงเองทั้งที่ไม่มีใครแตะโค้ด
+      - name: Format check (ruff)
+        run: ruff format --check .
+
   test-python:
     runs-on: ubuntu-latest
     defaults:
