@@ -10,4 +10,10 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-extend-select = ["I"]
+extend-select = ["E", "F", "I"]
+# E501 (line too long) ปิดไว้ตั้งใจ — ความยาวบรรทัดให้ ruff format จัดการแทน
+# WHY: E501 บอกได้แค่ว่า "ยาวไป" ไม่บอกว่าควรตัดตรงไหน แต่ละคนเลยตัดคนละแบบและกลายเป็น
+#      ประเด็นถกเถียงใน review ส่วน formatter ตัดให้เองสม่ำเสมอทั้ง repo (ดู job lint-python ใน ci.yml)
+# NOTE: formatter ไม่แตะข้างในสตริง — system prompt ภาษาไทยยาวๆ ใน chat_service.py จึงอยู่ครบบรรทัดเดียว
+#       ซึ่งเป็นสิ่งที่ต้องการ เพราะหั่นเป็น implicit concat แล้วอ่าน prompt ยากขึ้นโดยไม่ได้อะไรกลับมา
+ignore = ["E501"]
