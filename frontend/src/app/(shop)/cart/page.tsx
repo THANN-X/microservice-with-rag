@@ -23,7 +23,6 @@ export default function CartPage() {
   const subtotal = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
   // #3 ตรวจสอบ item ที่ราคาเป็น 0 — อาจเกิดจาก metadata ขาดหาย
   const hasZeroPrice = items.some((item) => !item.price || item.price <= 0);
-  const canCheckout = !isGuest && !hasZeroPrice && items.length > 0;
 
   const handleCheckout = () => {
     if (isGuest) {

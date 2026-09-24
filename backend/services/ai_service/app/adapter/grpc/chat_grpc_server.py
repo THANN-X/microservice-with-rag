@@ -22,7 +22,7 @@ class AIChatServicer(ai_service_pb2_grpc.AIChatServiceServicer):
                 message=request.message,
                 session_id=request.session_id,
             )
-            
+
             async for chunk in self._chat_service.chat(chat_req):
                 yield ai_service_pb2.ChatResponse(
                     event_type=chunk.event_type,
@@ -33,7 +33,9 @@ class AIChatServicer(ai_service_pb2_grpc.AIChatServiceServicer):
             logger.exception("Error in gRPC Chat handler")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details("Internal server error")
-            yield ai_service_pb2.ChatResponse(event_type="error", text_content="ขออภัยค่ะ เกิดข้อผิดพลาด")
+            yield ai_service_pb2.ChatResponse(
+                event_type="error", text_content="ขออภัยค่ะ เกิดข้อผิดพลาด"
+            )
 
 
 async def serve_grpc(chat_service: ChatService, port: int) -> grpc.aio.Server:

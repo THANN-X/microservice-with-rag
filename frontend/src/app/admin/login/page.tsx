@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ShieldCheck, User, Lock, ArrowRight } from "lucide-react";
 import { adminAuthService } from "@/lib/services";
 import { setAccessToken } from "@/lib/api";
@@ -132,12 +133,12 @@ export default function AdminLoginPage() {
 
           {/* Back link */}
           <div className="mt-6 text-center">
-            <a
+            <Link
               href="/"
               className="text-xs text-secondary transition-colors hover:text-primary"
             >
               ← กลับหน้าร้านค้า
-            </a>
+            </Link>
           </div>
         </div>
       </div>

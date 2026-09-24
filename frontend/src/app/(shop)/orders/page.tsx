@@ -32,7 +32,6 @@ export default function OrdersPage() {
     } else {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   if (authLoading) {

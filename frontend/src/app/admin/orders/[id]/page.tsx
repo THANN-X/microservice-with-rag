@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -19,7 +19,6 @@ import type { OrderHistory } from "@/lib/types";
 
 export default function AdminOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
 
   const [order, setOrder] = useState<OrderHistory | null>(null);
   const [loading, setLoading] = useState(true);
