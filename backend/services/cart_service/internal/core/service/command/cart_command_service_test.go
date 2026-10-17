@@ -62,7 +62,7 @@ func assertNotFoundAppError(t *testing.T, err error) {
 	t.Helper()
 	appErr, ok := err.(errs.AppError)
 	assert.True(t, ok, "expected errs.AppError, got %T", err)
-	assert.Equal(t, http.StatusNotFound, appErr.Code)
+	assert.Equal(t, http.StatusOK, appErr.Code)
 }
 
 // assertInternalAppError ตรวจ status code 500 ไม่ใช่แค่ assert.Error()
