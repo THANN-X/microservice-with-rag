@@ -26,11 +26,8 @@ function ProductRecommendations({ productIds }: { productIds: number[] }) {
       productIds.map((id) => catalogService.get(String(id)).catch(() => null))
     )
       .then((responses) => {
-        // filter out nulls or errors and extract product data
-        const validProducts = responses
-          .map((r: any) => r?.data || r)
-          .filter((p: any) => p && (p.id || p.product_id));
-        setProducts(validProducts as CatalogProduct[]);
+        // .catch() ด้านบนคืน null ให้ชิ้นที่ดึงไม่สำเร็จ — คัดออกตรงนี้
+        setProducts(responses.filter((p) => p !== null));
       })
       .catch(console.error);
   }, [productIds]);
@@ -40,7 +37,7 @@ function ProductRecommendations({ productIds }: { productIds: number[] }) {
   return (
     <div className="flex gap-4 overflow-x-auto py-2 mt-1 pb-4 max-w-[80vw] md:max-w-[45vw] lg:max-w-[35vw] scroll-smooth snap-x">
       {products.map((p) => {
-        const id = p.product_id || p.id;
+        const id = p.product_id;
         return (
           <Link
             key={id}
@@ -57,7 +54,7 @@ function ProductRecommendations({ productIds }: { productIds: number[] }) {
               )}
             </div>
             <h4 className="text-xs font-bold line-clamp-1 mb-1">{p.name}</h4>
-            <span className="text-primary font-black text-sm">{formatBaht(getMinPrice(p.variants))}</span>
+            <span className="text-primary font-black text-sm">{formatBaht(getMinPrice(p.variants ?? []))}</span>
           </Link>
         );
       })}
@@ -83,7 +80,11 @@ export default function ChatPage() {
     if (saved) {
       try {
         setMessages(JSON.parse(saved));
-      } catch (e) { }
+      } catch {
+        // JSON ใน sessionStorage พัง (เช่นถูกแก้มือ หรือ schema เปลี่ยน)
+        // → เริ่มบทสนทนาใหม่ แต่ต้องเห็นใน console ว่าเกิดอะไรขึ้น
+        console.warn("chat_messages ใน sessionStorage อ่านไม่ได้ — เริ่มบทสนทนาใหม่");
+      }
     }
     const savedSessionId = sessionStorage.getItem("chat_session_id");
     if (savedSessionId) {
@@ -238,6 +239,8 @@ export default function ChatPage() {
                 ) : (
                   <ReactMarkdown
                     components={{
+                      // ดึง node (hast element ของ react-markdown) ออกจาก props ก่อน spread
+                      // ไม่งั้นมันจะหลุดลง DOM แล้ว React เตือน unknown prop
                       p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
                       strong: ({ node, ...props }) => <strong className="font-bold text-primary" {...props} />,
                       ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />,

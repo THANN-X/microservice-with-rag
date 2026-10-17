@@ -1,0 +1,15 @@
+# git เก็บไฟล์ข้อความเป็น LF ใน repo แล้ว checkout ออกมาตาม platform ของแต่ละคน
+* text=auto
+
+# shell script ต้องเป็น LF ทุกเครื่อง ไม่ว่า core.autocrlf ของใครจะตั้งไว้ยังไง
+# WHY: docker-entrypoint-initdb.d/init-multiple-dbs.sh ถูก mount เข้า container postgres
+#      (ดู docker-compose.yml) แล้ว Linux อ่านทุกอย่างหลัง #! จนถึง \n เป็นชื่อ interpreter
+#      ถ้าไฟล์เป็น CRLF มันจะไปหา "/bin/bash\r" ซึ่งไม่มีอยู่ → init ล้ม → database ไม่ถูกสร้าง
+# NOTE: หายากเป็นพิเศษ เพราะ Git Bash บน Windows รันไฟล์ CRLF ผ่านเฉยๆ พังแค่ใน container
+#       และ \r ยังทำให้ error message ถูกเขียนทับจนอ่านไม่เห็นชื่อไฟล์ที่ผิด
+*.sh text eol=lf
+
+# ทิศทางตรงข้ามกับ .sh — .bat ต้องเป็น CRLF เพราะเป็นรูปแบบที่ cmd.exe คาดหวัง
+# ถ้าเป็น LF จะมีปัญหากับ goto label และบล็อกหลายบรรทัดอย่าง if / for
+# NOTE: ตอนนี้ยังไม่มี .bat ที่ git track ไว้ (generate_go_proto.bat ถูก gitignore) ใส่กันไว้ล่วงหน้า
+*.bat text eol=crlf

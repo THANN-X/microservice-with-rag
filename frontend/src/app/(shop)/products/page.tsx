@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import AddToCartButton from "./_components/add-to-cart-button";
 import { APP_CONFIG } from "@/lib/constants";
+import type { Category } from "@/lib/types";
 
 type SearchParams = {
   search?: string;
@@ -26,8 +27,8 @@ export default async function ProductsPage({
   const categories = await serverFetchCategories();
 
   // Helper to find category and collect all descendant IDs recursively
-  const getDescendantIds = (nodes: any[], targetId: number): number[] => {
-    const findCategoryNode = (treeNodes: any[], id: number): any | null => {
+  const getDescendantIds = (nodes: Category[], targetId: number): number[] => {
+    const findCategoryNode = (treeNodes: Category[], id: number): Category | null => {
       for (const node of treeNodes) {
         if (node.id === id) return node;
         if (node.children && node.children.length > 0) {
@@ -38,7 +39,7 @@ export default async function ProductsPage({
       return null;
     };
 
-    const collectAllIds = (node: any): number[] => {
+    const collectAllIds = (node: Category): number[] => {
       const ids = [node.id];
       if (node.children && node.children.length > 0) {
         for (const child of node.children) {

@@ -17,7 +17,9 @@ class VectorStorePort(ABC):
         ...
 
     @abstractmethod
-    async def search(self, query_embedding: list[float], top_k: int = 5, score_threshold: float = 0.5) -> list[ProductResult]:
+    async def search(
+        self, query_embedding: list[float], top_k: int = 5, score_threshold: float = 0.5
+    ) -> list[ProductResult]:
         """Search for similar products by embedding vector."""
         ...
 

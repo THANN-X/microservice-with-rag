@@ -65,7 +65,7 @@ export default function AdminOrdersPage() {
   const getPaginationGroup = () => {
     const MAX_BUTTON = 5;
     let start = Math.max(1, page - 2);
-    let end = Math.min(totalPages, start + MAX_BUTTON - 1);
+    const end = Math.min(totalPages, start + MAX_BUTTON - 1);
     if (end - start + 1 < MAX_BUTTON) {
       start = Math.max(1, end - MAX_BUTTON + 1);
     }

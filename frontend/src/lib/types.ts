@@ -297,30 +297,65 @@ export interface AdminStats {
 
 // ─── Catalog (read-optimized) ───
 // ข้อมูลสินค้าสำหรับหน้า shop/search — อ่านจาก catalog_service ที่ sync สินค้าจาก product_service
-// CatalogProduct ใช้ id เป็น string (เป็น MongoDB ObjectID) ไม่ใช่ number
+//
+// สำคัญ: type ในบล็อกนี้สะท้อน JSON ที่ catalog_service ส่งมา "ดิบๆ" ตรงตาม
+//   backend/services/catalog_service/internal/core/port/service/dto/catalog_dto.go
+// จึงใช้ชื่อ field แบบ product_id / category_id / variant_id ไม่ใช่ id
+// และแยก CatalogCategory / CatalogVariant ออกจาก Category / Variant ของ product_service
+// เพราะเป็นคนละ shape กัน (CQRS read model ตัดข้อมูลที่หน้าร้านไม่ใช้ทิ้ง)
+//
+// ฝั่ง Go marshal nil slice เป็น null ไม่ใช่ [] — ทุก field ที่เป็น array จึงเป็น | null
+
+export interface CatalogCategory {
+  category_id: number;
+  name: string;
+  slug: string;
+}
+
+export interface CatalogVariantAttribute {
+  key: string;    // e.g. "Color"
+  value: string;  // e.g. "Red"
+}
+
+export interface CatalogVariant {
+  variant_id: number;
+  sku: string;
+  name: string;
+  price: number;
+  stock: number;
+  is_active: boolean;
+  image_urls: string[] | null;
+  attributes: CatalogVariantAttribute[] | null;
+}
+
 export interface CatalogProduct {
-  id: string;
   product_id: number;
   name: string;
   description: string;
-  image_urls: string[];
-  variants: Variant[];
-  categories: Category[];
+  image_urls: string[] | null;
+  categories: CatalogCategory[] | null;
+  variants: CatalogVariant[] | null;
+  is_active: boolean;
 }
 
+// ตรงกับ dto.ProductListRes — ไม่ใช่ { products, limit }
 export interface CatalogListResponse {
-  products: CatalogProduct[];
+  items: CatalogProduct[] | null;
   total: number;
   page: number;
-  limit: number;
+  page_size: number;
+  total_pages: number;
 }
 
+// image_url / image_urls เป็น omitempty ฝั่ง Go จึงอาจไม่มีมาเลย
 export interface CatalogVariantInfo {
+  variant_id: number;
+  product_id: number;
   product_name: string;
   variant_name: string;
   price: number;
-  image_url: string;
-  image_urls: string[];
+  image_url?: string;
+  image_urls?: string[];
 }
 
 // ─── Admin ───

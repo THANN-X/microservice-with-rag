@@ -8,9 +8,9 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import AsyncGenerator
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config import settings
@@ -100,22 +100,28 @@ class ChatService:
         )
 
         # Prompt with conversation history
-        self._prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_TEMPLATE),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{question}"),
-        ])
+        self._prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", SYSTEM_TEMPLATE),
+                MessagesPlaceholder(variable_name="chat_history"),
+                ("human", "{question}"),
+            ]
+        )
 
         # RAG chain: prompt -> LLM -> parse output
         self._chain = self._prompt | self._llm
 
         # Contextualize query prompt
-        self._contextualize_prompt = ChatPromptTemplate.from_messages([
-            ("system", CONTEXTUALIZE_TEMPLATE),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{question}"),
-        ])
-        self._contextualize_chain = self._contextualize_prompt | self._rewriter_llm | StrOutputParser()
+        self._contextualize_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", CONTEXTUALIZE_TEMPLATE),
+                MessagesPlaceholder(variable_name="chat_history"),
+                ("human", "{question}"),
+            ]
+        )
+        self._contextualize_chain = (
+            self._contextualize_prompt | self._rewriter_llm | StrOutputParser()
+        )
 
         # In-memory conversation history per session (เรียงจากตัวที่ไม่ได้ใช้นานสุด -> ตัวล่าสุด)
         self._history: OrderedDict[str, _Session] = OrderedDict()
@@ -157,13 +163,15 @@ class ChatService:
         # 0. Contextualize user query using chat history
         chat_history = self._session_history(request.session_id)
         search_query = request.message
-        
+
         if chat_history:
             try:
-                rewritten = await self._contextualize_chain.ainvoke({
-                    "chat_history": chat_history[-REWRITE_HISTORY_MSGS:],
-                    "question": request.message
-                })
+                rewritten = await self._contextualize_chain.ainvoke(
+                    {
+                        "chat_history": chat_history[-REWRITE_HISTORY_MSGS:],
+                        "question": request.message,
+                    }
+                )
                 rewritten = rewritten.strip()
                 if rewritten:
                     search_query = rewritten
@@ -192,21 +200,23 @@ class ChatService:
 
         # 5. Invoke LangChain chain
         try:
-            async for chunk in self._chain.astream({
-                "context": context,
-                "chat_history": chat_history,
-                "question": request.message,
-            }):
+            async for chunk in self._chain.astream(
+                {
+                    "context": context,
+                    "chat_history": chat_history,
+                    "question": request.message,
+                }
+            ):
                 if chunk.content:
                     reply_content += chunk.content
                     yield ChatResponseChunk(event_type="chunk", text_content=chunk.content)
-            
+
             # 5.1 Yield products that were actually mentioned by the AI
             relevant_product_ids = self._mentioned_product_ids(products, reply_content)
 
             if relevant_product_ids:
                 yield ChatResponseChunk(event_type="products", product_ids=relevant_product_ids)
-            
+
             yield ChatResponseChunk(event_type="done")
         except Exception:
             failed = True
@@ -217,7 +227,9 @@ class ChatService:
             if relevant_product_ids:
                 yield ChatResponseChunk(event_type="products", product_ids=relevant_product_ids)
 
-            yield ChatResponseChunk(event_type="error", text_content="ขออภัยค่ะ ระบบ AI มีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ")
+            yield ChatResponseChunk(
+                event_type="error", text_content="ขออภัยค่ะ ระบบ AI มีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้งนะคะ"
+            )
         finally:
             # 6. Update conversation history
             # ต้องอยู่ใน finally เพราะถ้าผู้ใช้ปิดแท็บกลางคัน generator จะถูกปิดที่บรรทัด yield
@@ -249,14 +261,18 @@ class ChatService:
         # ยิงทุกคำถามเป็น batch เดียวใน thread แยก ได้ทั้งไม่บล็อกและเหลือ forward pass เดียว
         embeddings = await asyncio.to_thread(self._embedding.embed_batch, queries)
 
-        ranked_lists: list[list[ProductResult]] = list(await asyncio.gather(*(
-            self._vector_store.search(
-                query_embedding=embedding,
-                top_k=settings.RAG_TOP_K,
-                score_threshold=settings.RAG_SCORE_THRESHOLD,
+        ranked_lists: list[list[ProductResult]] = list(
+            await asyncio.gather(
+                *(
+                    self._vector_store.search(
+                        query_embedding=embedding,
+                        top_k=settings.RAG_TOP_K,
+                        score_threshold=settings.RAG_SCORE_THRESHOLD,
+                    )
+                    for embedding in embeddings
+                )
             )
-            for embedding in embeddings
-        )))
+        )
         for query, hits in zip(queries, ranked_lists):
             logger.info("Retrieved %d for %r: %s", len(hits), query, self._format_hits(hits))
 
@@ -361,7 +377,7 @@ class ChatService:
                         variant_info += f" [{attr_str}]"
                     variant_lines.append(variant_info)
                 product_info += "\n" + "\n".join(variant_lines)
-            
+
             lines.append(product_info)
-            
+
         return "\n".join(lines)

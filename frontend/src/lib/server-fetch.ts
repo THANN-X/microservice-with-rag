@@ -10,51 +10,29 @@
  *       ส่วน admin ยังใช้ product_service (write model, PostgreSQL) ผ่าน /api/products/*
  */
 
-import type { Product, ProductListResponse, Category, Variant, ProductCategory } from "./types";
+import type {
+  Product,
+  ProductListResponse,
+  Category,
+  Variant,
+  ProductCategory,
+  CatalogProduct,
+  CatalogVariant,
+  CatalogCategory,
+  CatalogListResponse,
+} from "./types";
 
 const BFF = process.env.BFF_URL ?? "http://localhost:8080";
 
-/* ─── Catalog read model shapes ───
+/* ─── Catalog read model → shop shapes ───
  * catalog_service (MongoDB) ส่ง field คนละชื่อกับ product_service:
  *   product_id (ไม่ใช่ id), variant_id, attributes[{key,value}] (ไม่ใช่ options[{name,value}])
  * เรา map กลับเป็น Product/Variant ของ frontend เพื่อให้หน้า shop ใช้ type เดิมได้
+ *
+ * ตัว type ของ payload ดิบอยู่ใน types.ts (CatalogProduct / CatalogVariant / …)
+ * ไม่ประกาศซ้ำที่นี่ จะได้มีที่เดียวที่ต้องแก้เวลา catalog_service เปลี่ยน schema
  */
-interface CatalogVariantRaw {
-  variant_id: number;
-  sku: string;
-  name: string;
-  price: number;
-  stock: number;
-  is_active: boolean;
-  image_urls: string[] | null;
-  attributes: { key: string; value: string }[] | null;
-}
-
-interface CatalogCategoryRaw {
-  category_id: number;
-  name: string;
-  slug: string;
-}
-
-interface CatalogProductRaw {
-  product_id: number;
-  name: string;
-  description: string;
-  image_urls: string[] | null;
-  categories: CatalogCategoryRaw[] | null;
-  variants: CatalogVariantRaw[] | null;
-  is_active: boolean;
-}
-
-interface CatalogListRaw {
-  items: CatalogProductRaw[] | null;
-  total: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
-}
-
-function mapCatalogVariant(v: CatalogVariantRaw): Variant {
+function mapCatalogVariant(v: CatalogVariant): Variant {
   return {
     id: v.variant_id,
     sku: v.sku,
@@ -67,11 +45,11 @@ function mapCatalogVariant(v: CatalogVariantRaw): Variant {
   };
 }
 
-function mapCatalogCategory(c: CatalogCategoryRaw): ProductCategory {
+function mapCatalogCategory(c: CatalogCategory): ProductCategory {
   return { id: c.category_id, name: c.name };
 }
 
-function mapCatalogProduct(c: CatalogProductRaw): Product {
+function mapCatalogProduct(c: CatalogProduct): Product {
   return {
     id: c.product_id,
     name: c.name,
@@ -106,7 +84,7 @@ export async function serverFetchProducts(params: {
       next: { revalidate: 60 },
     });
     if (!res.ok) return { items: [], total: 0, page: 1, page_size: 20, total_pages: 0 };
-    const data: CatalogListRaw = await res.json();
+    const data: CatalogListResponse = await res.json();
     return {
       items: (data.items ?? []).map(mapCatalogProduct),
       total: data.total ?? 0,
@@ -125,7 +103,7 @@ export async function serverFetchProduct(id: number): Promise<Product | null> {
       next: { revalidate: 60 },
     });
     if (!res.ok) return null;
-    const data: CatalogProductRaw = await res.json();
+    const data: CatalogProduct = await res.json();
     return mapCatalogProduct(data);
   } catch {
     return null;

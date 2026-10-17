@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { cn, formatBaht } from "@/lib/utils";
 import { adminOrderHistoryService, productService } from "@/lib/services";
 import { adminOrderStatus } from "@/lib/order-status";
@@ -201,33 +202,38 @@ function CategoryDonut({ slices }: { slices: { label: string; pct: number; color
 
   const radius = 60;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+
+  // คำนวณ offset สะสมไว้ล่วงหน้า แทนการ mutate ตัวแปรระหว่าง .map() ตอนเรนเดอร์
+  // — ถ้า React เรนเดอร์ซ้ำโดยไม่ได้รีเซ็ต offset วงโดนัทจะเพี้ยน
+  const arcs = slices.reduce<{ label: string; color: string; dash: number; offset: number }[]>(
+    (acc, cat) => {
+      const dash = (cat.pct / 100) * circumference;
+      const offset = acc.length ? acc[acc.length - 1].offset + acc[acc.length - 1].dash : 0;
+      acc.push({ label: cat.label, color: cat.color, dash, offset });
+      return acc;
+    },
+    []
+  );
 
   return (
     <ChartCard title="สัดส่วนหมวดหมู่">
       <div className="flex items-center justify-center">
         <svg width="160" height="160" viewBox="0 0 160 160">
-          {slices.map((cat) => {
-            const dash = (cat.pct / 100) * circumference;
-            const gap = circumference - dash;
-            const o = offset;
-            offset += dash;
-            return (
-              <circle
-                key={cat.label}
-                cx="80"
-                cy="80"
-                r={radius}
-                fill="none"
-                stroke={cat.color}
-                strokeWidth="24"
-                strokeDasharray={`${dash} ${gap}`}
-                strokeDashoffset={-o}
-                strokeLinecap="round"
-                className="transition-all duration-500"
-              />
-            );
-          })}
+          {arcs.map((arc) => (
+            <circle
+              key={arc.label}
+              cx="80"
+              cy="80"
+              r={radius}
+              fill="none"
+              stroke={arc.color}
+              strokeWidth="24"
+              strokeDasharray={`${arc.dash} ${circumference - arc.dash}`}
+              strokeDashoffset={-arc.offset}
+              strokeLinecap="round"
+              className="transition-all duration-500"
+            />
+          ))}
         </svg>
       </div>
       <div className="mt-4 space-y-2">
@@ -335,9 +341,9 @@ export default function AdminDashboardPage() {
       <div className="rounded-2xl bg-white p-6 shadow-ambient">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-bold text-on-surface">คำสั่งซื้อล่าสุด</h3>
-          <a href="/admin/orders" className="text-xs font-medium text-primary hover:underline">
+          <Link href="/admin/orders" className="text-xs font-medium text-primary hover:underline">
             ดูทั้งหมด →
-          </a>
+          </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">

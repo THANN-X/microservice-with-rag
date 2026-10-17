@@ -200,7 +200,7 @@ function AttributeRow({
           )}
 
           {values.length === 0 ? (
-            <p className="text-xs text-outline">ยังไม่มีค่า — กด "เพิ่มค่า" ด้านบน</p>
+            <p className="text-xs text-outline">ยังไม่มีค่า — กด &quot;เพิ่มค่า&quot; ด้านบน</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {values.map((val) => (
