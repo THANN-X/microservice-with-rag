@@ -154,3 +154,16 @@ jobs:
       - name: Test (pytest)
         run: pytest -v
 
+  ci-gate:
+      needs: [detect, check-go, lint-python, test-python, build-frontend]
+      if: always()
+      runs-on: ubuntu-latest
+      steps:
+        - name: Verify no failures
+          run: |
+            if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || \
+              [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+              echo "มี job ล้มเหลว"
+              exit 1
+            fi
+            echo "ผ่านทั้งหมด (job ที่ skip ถือว่าโอเค)"
