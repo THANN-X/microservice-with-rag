@@ -54,6 +54,8 @@ require (
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
+	health v0.0.0
+	messaging v0.0.0
 )
 
 replace (
@@ -62,3 +64,7 @@ replace (
 	httpcore => ../../pkg/utils/httpcore
 	logs => ../../pkg/logs
 )
+
+replace messaging => ../../pkg/messaging
+
+replace health => ../../pkg/health

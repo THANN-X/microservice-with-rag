@@ -4,19 +4,17 @@ import (
 	"authmiddleware"
 	"context"
 	"fmt"
-	"log"
+	"health"
+	"messaging"
 	"os"
-	"os/signal"
 	"product_service/internal/adapter/handler/http"
 	"product_service/internal/adapter/handler/message"
-	"product_service/internal/adapter/messaging/consumer"
 	"product_service/internal/adapter/messaging/producer"
 	repository "product_service/internal/adapter/repository/postgres"
 	"product_service/internal/config"
 	"product_service/internal/core/service/command"
 	"product_service/internal/core/service/query"
 	"product_service/internal/core/service/worker"
-	"syscall"
 
 	"github.com/IBM/sarama"
 	"github.com/gofiber/fiber/v2"
@@ -96,14 +94,21 @@ func main() {
 
 	//Setup Kafka Consumer
 	/********************************************************************************/
+	// DLQ: message ที่ retry ครบแล้วยังพัง → order.events.dlq แทนการทิ้ง
+	dlq, err := messaging.NewDeadLetterPublisher([]string{kafkaBrokers})
+	if err != nil {
+		panic("Failed to create Kafka dead letter publisher: " + err.Error())
+	}
+	defer dlq.Close()
+
 	msgHandler := message.NewProductMessageHandler(cmdService)
-	consumerGroupHandler := consumer.NewConsumerGroupHandler(msgHandler)
+	consumerGroupHandler := messaging.NewConsumerGroupHandler("product", msgHandler, dlq, messaging.DefaultRetryPolicy())
 
 	// Config Consumer Group
 	saramaConfig := sarama.NewConfig()
-	saramaConfig.Version = sarama.V2_8_1_0                      // หรือเวอร์ชันที่คุณใช้
+	saramaConfig.Version = messaging.KafkaVersion               // ค่าเดียวกันทั้งระบบ (ดู pkg/messaging/kafka.go)
 	saramaConfig.Consumer.Offsets.Initial = sarama.OffsetOldest // ถ้าเริ่มรันใหม่ให้อ่านตั้งแต่ต้น (หรือ OffsetNewest)
-	saramaConfig.Consumer.Return.Errors = true
+	saramaConfig.Consumer.Return.Errors = true                  // อ่านโดย messaging.LogConsumerErrors ข้างล่าง
 
 	// สร้าง Consumer Group (ตั้งชื่อ Group ให้ตรงกับ Service)
 	consumerGroup, err := sarama.NewConsumerGroup([]string{kafkaBrokers}, "product-service-group", saramaConfig)
@@ -111,25 +116,23 @@ func main() {
 		panic("Failed to create Kafka consumer group: " + err.Error())
 	}
 	defer consumerGroup.Close()
+	go messaging.LogConsumerErrors("product", consumerGroup)
 
-	// สั่งรัน Consumer Group ใน Background
-	go func() {
-		// วนลูปเผื่อกรณีมีการ Rebalance หรือหลุด
-		for {
-			// ดักฟัง Topic ชื่อ "order.events" (สมมติว่าเป็น Topic จาก Order Service)
-			if err := consumerGroup.Consume(ctx, []string{"order.events"}, consumerGroupHandler); err != nil {
-				log.Printf("Error from consumer: %v\n", err)
-			}
-			// เช็คว่าถ้า context ถูกสั่ง cancel (ปิดเซิร์ฟเวอร์) ให้ออกจากลูป
-			if ctx.Err() != nil {
-				return
-			}
-		}
-	}()
+	// สั่งรัน Consumer Group ใน Background ดักฟัง "order.events" จาก Order Service
+	// RunConsumerGroup วนเข้ากลุ่มใหม่เองเมื่อ Rebalance, รอ backoff เมื่อ Kafka หลุด และออกเมื่อปิดเซิร์ฟเวอร์
+	go messaging.RunConsumerGroup(ctx, "product", consumerGroup, []string{"order.events"}, consumerGroupHandler)
 	/********************************************************************************/
 
 	// Setup HTTP Handler & Routes
 	app := fiber.New()
+
+	// Health: ต้องลงทะเบียนก่อน route ที่มี InternalAuth
+	sqlDB, err := db.DB()
+	if err != nil {
+		panic("Failed to get sql.DB from gorm: " + err.Error())
+	}
+	checker := health.New("product").Add("postgres", health.SQL(sqlDB))
+	checker.Register(app)
 
 	// HTTP Handler
 	handler := http.NewProductHandler(cmdService, queryService)
@@ -190,35 +193,24 @@ func main() {
 	attrAdminGroup.Post("/:id/values", attrHandler.CreateAttributeValue)
 	attrAdminGroup.Delete("/:id/values/:valueId", attrHandler.DeleteAttributeValue)
 
-	// Graceful Shutdown (สำคัญสำหรับ Microservices!)
-	// สร้าง Channel เพื่อรอรับสัญญาณปิดโปรแกรม (Ctrl+C หรือ Docker stop)
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	// ให้เซิร์ฟเวอร์รันใน Goroutine เพื่อไม่ให้ block
-	go func() {
-		port := os.Getenv("APP_PORT")
-		if port == "" {
-			port = "3002"
-		}
-		fmt.Printf("🚀 Product Service is running on port %s\n", port)
-		if err := app.Listen(":" + port); err != nil {
-			log.Fatalf("Server failed to start: %v", err)
-		}
-	}()
+	port := os.Getenv("APP_PORT")
+	if port == "" {
+		port = "3002"
+	}
+	fmt.Printf("🚀 Product Service is running on port %s\n", port)
 
-	// รอรับสัญญาณปิดโปรแกรม
-	<-quit
-	fmt.Println("Gracefully shutting down server...")
+	// Graceful Shutdown (สำคัญสำหรับ Microservices!)
+	// Serve block จนได้ Ctrl+C / docker stop → /readyz ตอบ 503 → รอ request ที่ค้างอยู่ให้เสร็จ
+	if err := checker.Serve(app, ":"+port); err != nil {
+		// panic แทน log.Fatalf: panic ยังรัน defer (ปิด consumer group / DLQ / producer) ส่วน log.Fatalf เรียก os.Exit ข้ามทิ้งหมด
+		panic("Server failed: " + err.Error())
+	}
 
-	// แจ้ง Worker ให้หยุดทำงาน (ผ่าน Context Cancel)
+	// HTTP ปิดแล้ว → แจ้ง Worker (outbox + Kafka consumer) ให้หยุดทำงาน (ผ่าน Context Cancel)
+	// WHY ทีหลัง HTTP? request ที่ค้างอยู่อาจเพิ่งเขียน outbox ต้องให้ worker ยังอยู่จนถึงตอนนั้น
 	cancel()
 
-	// รอให้ HTTP Server ปิดตัวเองอย่างปลอดภัย (ไม่ตัด request ที่กำลังทำงานอยู่)
-	_ = app.Shutdown()
-
 	fmt.Println("Server was successful shutdown.")
-
 }

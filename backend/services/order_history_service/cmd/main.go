@@ -3,11 +3,8 @@ package main
 import (
 	"context"
 	"os"
-	"os/signal"
-	"syscall"
 
 	orderhistoryhttp "order_history_service/internal/adapter/handler/http"
-	"order_history_service/internal/adapter/messaging/consumer"
 	msghandler "order_history_service/internal/adapter/messaging/handler"
 	mongorepo "order_history_service/internal/adapter/repository/mongo"
 	"order_history_service/internal/config"
@@ -16,7 +13,9 @@ import (
 
 	authmiddleware "authmiddleware"
 
+	"health"
 	"logs"
+	"messaging"
 
 	"github.com/IBM/sarama"
 	"github.com/gofiber/fiber/v2"
@@ -60,6 +59,8 @@ func main() {
 	}
 
 	kafkaCfg := sarama.NewConfig()
+	kafkaCfg.Version = messaging.KafkaVersion
+	kafkaCfg.Consumer.Return.Errors = true // อ่านโดย messaging.LogConsumerErrors ข้างล่าง
 	kafkaCfg.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{
 		sarama.NewBalanceStrategyRoundRobin(),
 	}
@@ -70,27 +71,31 @@ func main() {
 		panic("failed to create kafka consumer group: " + err.Error())
 	}
 	defer consumerGrp.Close() //nolint:errcheck
+	go messaging.LogConsumerErrors("order-history", consumerGrp)
+
+	// DLQ: message ที่ retry ครบแล้วยังพัง → order.events.dlq แทนการทิ้ง
+	dlq, err := messaging.NewDeadLetterPublisher([]string{brokers})
+	if err != nil {
+		panic("failed to create kafka dead letter publisher: " + err.Error())
+	}
+	defer dlq.Close() //nolint:errcheck
 
 	eventHandler := msghandler.NewOrderEventHandler(cmdService)
-	groupHandler := consumer.NewConsumerGroupHandler(eventHandler)
+	groupHandler := messaging.NewConsumerGroupHandler("order-history", eventHandler, dlq, messaging.DefaultRetryPolicy())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Kafka consume loop — restart on rebalance
-	go func() {
-		for {
-			if err := consumerGrp.Consume(ctx, []string{kafkaTopic}, groupHandler); err != nil {
-				logs.Error("order-history: kafka consume error: " + err.Error())
-			}
-			if ctx.Err() != nil {
-				return
-			}
-		}
-	}()
+	// Kafka consume loop — เข้ากลุ่มใหม่หลัง rebalance, backoff ตอน Kafka ล่ม, ออกเมื่อ shutdown
+	go messaging.RunConsumerGroup(ctx, "order-history", consumerGrp, []string{kafkaTopic}, groupHandler)
 
 	// --- HTTP server ---
 	app := fiber.New()
+
+	checker := health.New("order-history").Add("mongo", func(ctx context.Context) error {
+		return mongoClient.Ping(ctx, nil)
+	})
+	checker.Register(app)
 
 	handler := orderhistoryhttp.NewOrderHistoryHandler(queryService)
 
@@ -107,21 +112,12 @@ func main() {
 		port = defaultPort
 	}
 
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	logs.Info("Order History Service starting on port " + port)
+	err = checker.Serve(app, ":"+port)
 
-	go func() {
-		logs.Info("Order History Service starting on port " + port)
-		if err := app.Listen(":" + port); err != nil {
-			logs.Error(err)
-		}
-	}()
-
-	<-quit
-	logs.Info("Order History Service shutting down...")
+	// HTTP ปิดแล้ว → หยุด Kafka consumer ต่อ แล้ว defer ปิด consumer group / DLQ / Mongo
 	cancel()
-	if err := app.Shutdown(); err != nil {
-		logs.Error(err)
+	if err != nil {
+		panic(err.Error()) // panic ยังรัน defer ก่อน exit ต่างจาก os.Exit
 	}
 }

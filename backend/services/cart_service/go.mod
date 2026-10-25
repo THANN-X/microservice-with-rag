@@ -48,6 +48,7 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
+	health v0.0.0
 )
 
 replace logs => ../../pkg/logs
@@ -63,3 +64,5 @@ replace httpcore => ../../pkg/utils/httpcore
 replace authmiddleware => ../../pkg/middleware
 
 replace gorm_helper => ../../pkg/utils/gorm_helper
+
+replace health => ../../pkg/health

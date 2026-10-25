@@ -7,7 +7,7 @@ require (
 	database v0.0.0
 	errs v0.0.0
 	github.com/go-playground/validator/v10 v10.30.1
-	github.com/gofiber/fiber/v2 v2.52.10
+	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/crypto v0.50.0
 	gorm.io/gorm v1.31.1
@@ -46,7 +46,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
@@ -62,11 +61,12 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
-	google.golang.org/api v0.277.0 // indirect
+	google.golang.org/api v0.277.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260427160629-7cedc36a6bc4 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
+	health v0.0.0
 )
 
 replace logs => ../../pkg/logs
@@ -82,3 +82,5 @@ replace httpcore => ../../pkg/utils/httpcore
 replace authmiddleware => ../../pkg/middleware
 
 replace gorm_helper => ../../pkg/utils/gorm_helper
+
+replace health => ../../pkg/health

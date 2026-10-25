@@ -13,10 +13,9 @@ package main
 import (
 	"authmiddleware"
 	"context"
+	"health"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	// handlers
@@ -24,7 +23,6 @@ import (
 	httphandler "order_service/internal/adapter/handler/http"
 	msghandler "order_service/internal/adapter/handler/message"
 	// messaging
-	"order_service/internal/adapter/messaging/consumer"
 	"order_service/internal/adapter/messaging/producer"
 	// repository
 	repository "order_service/internal/adapter/repository/postgres"
@@ -36,6 +34,8 @@ import (
 	"order_service/internal/core/service/command"
 	"order_service/internal/core/service/query"
 	woker "order_service/internal/core/service/woker"
+
+	"messaging"
 
 	"github.com/IBM/sarama"
 	"github.com/gofiber/fiber/v2"
@@ -95,32 +95,31 @@ func main() {
 
 	// ─── Kafka Consumer (stock.events) ────────────────────────────────────────
 	saramaConfig := sarama.NewConfig()
-	saramaConfig.Version = sarama.V2_8_1_0
+	saramaConfig.Version = messaging.KafkaVersion
 	saramaConfig.Consumer.Offsets.Initial = sarama.OffsetOldest
-	saramaConfig.Consumer.Return.Errors = true
+	saramaConfig.Consumer.Return.Errors = true // อ่านโดย messaging.LogConsumerErrors ข้างล่าง
+
+	// DLQ: message ที่ retry ครบแล้วยังพัง → stock.events.dlq แทนการทิ้ง
+	dlq, err := messaging.NewDeadLetterPublisher([]string{kafkaBrokers})
+	if err != nil {
+		log.Fatalf("Failed to create Kafka dead letter publisher: %v", err)
+	}
+	defer dlq.Close()
 
 	msgHandler := msghandler.NewOrderMessageHandler(cmdService)
-	consumerGroupHandler := consumer.NewConsumerGroupHandler(msgHandler)
+	consumerGroupHandler := messaging.NewConsumerGroupHandler("order", msgHandler, dlq, messaging.DefaultRetryPolicy())
 
 	consumerGroup, err := sarama.NewConsumerGroup([]string{kafkaBrokers}, "order-service-group", saramaConfig)
 	if err != nil {
 		log.Fatalf("Failed to create Kafka consumer group: %v", err)
 	}
 	defer consumerGroup.Close()
+	go messaging.LogConsumerErrors("order", consumerGroup)
 
 	// WHY goroutine?
-	//   - consumerGroup.Consume blocks จน session end/rebalance
+	//   - Consume blocks จน session end/rebalance และ RunConsumerGroup วนจน shutdown
 	//   - ต้องรันควบคู่กับ HTTP server
-	go func() {
-		for {
-			if err := consumerGroup.Consume(ctx, []string{"stock.events"}, consumerGroupHandler); err != nil {
-				log.Printf("Error from consumer: %v\n", err)
-			}
-			if ctx.Err() != nil {
-				return
-			}
-		}
-	}()
+	go messaging.RunConsumerGroup(ctx, "order", consumerGroup, []string{"stock.events"}, consumerGroupHandler)
 
 	// ─── Fiber HTTP Server ────────────────────────────────────────────────────
 	app := fiber.New(fiber.Config{
@@ -131,6 +130,15 @@ func main() {
 			})
 		},
 	})
+
+	// ─── Health ───────────────────────────────────────────────────────────────
+	// WHY ก่อน Routes? → /healthz, /readyz ต้องไม่โดน InternalAuth
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Failed to get sql.DB from gorm: %v", err)
+	}
+	checker := health.New("order").Add("postgres", health.SQL(sqlDB))
+	checker.Register(app)
 
 	// ─── Routes ───────────────────────────────────────────────────────────────
 	handler := httphandler.NewOrderHandler(cmdService, queryService)
@@ -151,30 +159,20 @@ func main() {
 	app.Post("/webhook/payment", handler.HandlePaymentWebhook)
 
 	// ─── Graceful Shutdown ────────────────────────────────────────────────────
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		port := os.Getenv("APP_PORT")
-		if port == "" {
-			port = "3003" // WHY 3003? auth=3001, product=3002, order=3003
-		}
-		if err := app.Listen(":" + port); err != nil {
-			log.Fatalf("Order service failed to start: %v", err)
-		}
-	}()
-
-	// Block จนได้ signal shutdown
-	<-quit
-	log.Println("Shutting down order service...")
-
-	// Cancel context → stop OutboxProcessor + Kafka Consumer
-	cancel()
-
-	// Graceful HTTP shutdown
-	if err := app.Shutdown(); err != nil {
-		log.Printf("Error shutting down HTTP server: %v", err)
+	port := os.Getenv("APP_PORT")
+	if port == "" {
+		port = "3003" // WHY 3003? auth=3001, product=3002, order=3003
 	}
+
+	// Block จนได้ signal shutdown → /readyz ตอบ 503 → รอ request ที่ค้างอยู่ (เช่น webhook ชำระเงิน) ให้เสร็จ
+	if err := checker.Serve(app, ":"+port); err != nil {
+		// panic แทน log.Fatalf: panic ยังรัน defer (ปิด consumer group / DLQ / producer) ส่วน log.Fatalf เรียก os.Exit ข้ามทิ้งหมด
+		panic("Order service failed: " + err.Error())
+	}
+
+	// HTTP ปิดแล้ว → Cancel context → stop OutboxProcessor + Kafka Consumer
+	// WHY ทีหลัง HTTP? request ที่ค้างอยู่อาจเพิ่งเขียน outbox ต้องให้ worker ยังอยู่จนถึงตอนนั้น
+	cancel()
 
 	log.Println("Order service stopped.")
 }

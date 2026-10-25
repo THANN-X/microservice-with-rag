@@ -6,6 +6,7 @@ import (
 	"events"
 	"fmt"
 	"logs"
+	"messaging"
 	serviceport "order_history_service/internal/core/port/service"
 
 	"github.com/IBM/sarama"
@@ -13,6 +14,10 @@ import (
 
 // orderEventHandler รับ Kafka messages จาก "order.events" topic
 // และ route ไปยัง OrderHistoryCommandService ตาม event type
+// compile-time check: ถ้า Handle มี signature ไม่ตรงกับ messaging.Handler จะ compile ไม่ผ่านที่ไฟล์นี้เลย
+// WHY ไม่ประกาศ interface ของตัวเอง? interface เป็นของฝั่งที่ใช้ (pkg/messaging) ฝั่งนี้แค่ทำตาม
+var _ messaging.Handler = (*orderEventHandler)(nil)
+
 type orderEventHandler struct {
 	cmdService serviceport.OrderHistoryCommandService
 }
@@ -32,16 +37,14 @@ func (h *orderEventHandler) Handle(ctx context.Context, msg *sarama.ConsumerMess
 
 		var header events.EventTypeHeader
 		if err := json.Unmarshal(msg.Value, &header); err != nil {
-			logs.Error(fmt.Sprintf("order-history: failed to extract event type from body: %v payload=%s", err, string(msg.Value)))
-			return nil // malformed payload → ไม่ retry
+			// malformed payload → retry ไปก็พังเหมือนเดิม ส่งเข้า DLQ ทันทีเพื่อเก็บไว้ตรวจสอบ
+			return messaging.Permanent(fmt.Errorf("order-history: extract event type from body: %w", err))
 		}
 		eventType = header.EventType
 	}
 
 	if eventType == "" {
-		logs.Warn(fmt.Sprintf("order-history: event type not found, skipping. topic=%s partition=%d offset=%d",
-			msg.Topic, msg.Partition, msg.Offset))
-		return nil
+		return messaging.Permanent(fmt.Errorf("order-history: event type not found in header or body"))
 	}
 
 	logs.Info(fmt.Sprintf("order-history: received event=%s topic=%s partition=%d offset=%d",
@@ -71,42 +74,42 @@ func (h *orderEventHandler) Handle(ctx context.Context, msg *sarama.ConsumerMess
 	case "ORDER_CREATED":
 		var evt events.OrderCreatedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal ORDER_CREATED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal ORDER_CREATED: %w", err))
 		}
 		return h.cmdService.HandleOrderCreated(ctx, messageID, &evt)
 
 	case "ORDER_CONFIRMED":
 		var evt events.OrderConfirmedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal ORDER_CONFIRMED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal ORDER_CONFIRMED: %w", err))
 		}
 		return h.cmdService.HandleOrderConfirmed(ctx, messageID, &evt)
 
 	case "ORDER_CANCELLED":
 		var evt events.OrderCancelledEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal ORDER_CANCELLED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal ORDER_CANCELLED: %w", err))
 		}
 		return h.cmdService.HandleOrderCancelled(ctx, messageID, &evt)
 
 	case "ORDER_PAID":
 		var evt events.OrderPaidEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal ORDER_PAID: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal ORDER_PAID: %w", err))
 		}
 		return h.cmdService.HandleOrderPaid(ctx, messageID, &evt)
 
 	case "ORDER_AWAITING_PAYMENT":
 		var evt events.OrderAwaitingPaymentEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal ORDER_AWAITING_PAYMENT: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal ORDER_AWAITING_PAYMENT: %w", err))
 		}
 		return h.cmdService.HandleOrderAwaitingPayment(ctx, messageID, &evt)
 
 	case "ORDER_RESERVATION_FAILED":
 		var evt events.OrderReservationFailedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal ORDER_RESERVATION_FAILED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal ORDER_RESERVATION_FAILED: %w", err))
 		}
 		return h.cmdService.HandleOrderReservationFailed(ctx, messageID, &evt)
 

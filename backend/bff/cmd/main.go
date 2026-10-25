@@ -5,6 +5,7 @@ import (
 	"bff/internal/adapter/handler"
 	"bff/internal/core/service"
 	bffmiddleware "bff/internal/middleware"
+	"health"
 	"jwtutils"
 	"log"
 	"os"
@@ -127,6 +128,12 @@ func main() {
 	jwtService := jwtutils.NewJWTService(jwtSecret, "ecommerce_app")
 
 	app := fiber.New()
+
+	// What: /healthz + /readyz — ลงทะเบียนก่อน CORS / rate limiter / GatewayAuth
+	// Why:  ไม่งั้น docker healthcheck โดน 401 และถูกนับเป็น request ใน rate limit
+	//       ไม่ check service ปลายทาง: ถ้า cart ล่ม BFF ยังให้บริการ route อื่นได้ ไม่ควรถอดทั้งตัวออก
+	checker := health.New("bff")
+	checker.Register(app)
 
 	// What: CORS middleware — อนุญาต cross-origin requests จาก frontend
 	// Why:  Frontend (localhost:3000) กับ BFF (localhost:8080) คนละ origin
@@ -275,8 +282,8 @@ func main() {
 	log.Printf("  OrderHistory: %s", orderHistoryURL)
 	log.Printf("  AI (gRPC):    %s", aiServiceURL)
 
-	if err := app.Listen(":" + port); err != nil {
-		log.Fatalf("BFF failed to start: %v", err)
+	if err := checker.Serve(app, ":"+port); err != nil {
+		panic("BFF failed: " + err.Error())
 	}
 }
 

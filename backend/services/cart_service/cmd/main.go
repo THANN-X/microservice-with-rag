@@ -7,6 +7,7 @@ import (
 	"cart_service/internal/config"
 	"cart_service/internal/core/service/command"
 	"cart_service/internal/core/service/query"
+	"health"
 	"logs"
 	"os"
 
@@ -23,7 +24,17 @@ func main() {
 	cmdService := command.NewCartCommandService(cmdRepo)
 	queryService := query.NewCartQueryService(queryRepo)
 
+	sqlDB, err := db.DB()
+	if err != nil {
+		panic("failed to get sql.DB from gorm: " + err.Error())
+	}
+	defer sqlDB.Close() //nolint:errcheck
+
 	app := fiber.New()
+
+	// health ต้องมาก่อน route อื่นที่มี InternalAuth
+	checker := health.New("cart").Add("postgres", health.SQL(sqlDB))
+	checker.Register(app)
 
 	handler := carthttp.NewCartHandler(cmdService, queryService)
 
@@ -42,7 +53,7 @@ func main() {
 
 	logs.Info("Cart Service starting on port " + port)
 
-	if err := app.Listen(":" + port); err != nil {
-		panic("failed to start server: " + err.Error())
+	if err := checker.Serve(app, ":"+port); err != nil {
+		panic("failed to run server: " + err.Error())
 	}
 }
