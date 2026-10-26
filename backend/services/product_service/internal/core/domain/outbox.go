@@ -15,7 +15,7 @@ type OutboxStatus string
 const (
 	OutboxStatusPending OutboxStatus = "PENDING"
 	OutboxStatusSent    OutboxStatus = "SENT"
-	OutboxStatusFailed  OutboxStatus = "FAILD" // TODO: แก้ typo → "FAILED"
+	OutboxStatusFailed  OutboxStatus = "FAILED" // เดิมสะกด "FAILD" — row เก่าถูกแปลงตอน start ใน config.OpenDatabase
 )
 
 // OutboxMessage คือ Entity หลักที่เราจะใช้ใน Business Logic
