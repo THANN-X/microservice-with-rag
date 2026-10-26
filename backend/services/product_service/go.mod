@@ -77,6 +77,8 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
+	health v0.0.0
+	messaging v0.0.0
 )
 
 replace logs => ../../pkg/logs
@@ -94,3 +96,7 @@ replace authmiddleware => ../../pkg/middleware
 replace events => ../../pkg/events
 
 replace gorm_helper => ../../pkg/utils/gorm_helper
+
+replace messaging => ../../pkg/messaging
+
+replace health => ../../pkg/health

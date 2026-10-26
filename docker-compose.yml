@@ -1,3 +1,13 @@
+# Healthcheck กลางของ Go service ทุกตัว — ยิง /readyz (เช็ค DB จริง) ที่ port จาก APP_PORT
+# WHY $${APP_PORT}? $$ = escape ของ compose ให้ shell ใน container เป็นคนอ่าน env → ใช้ anchor เดียวได้ทุก service
+# WHY wget? image runtime เป็น alpine มี busybox wget ติดมา ไม่ต้องลง curl เพิ่ม
+x-go-healthcheck: &go-healthcheck
+  test: [ "CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:$${APP_PORT}/readyz || exit 1" ]
+  interval: 10s
+  timeout: 3s
+  retries: 5
+  start_period: 20s
+
 services:
   db:
     image: postgres:17
@@ -50,6 +60,11 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    # WHY volume? ข้อมูลทุก topic (รวม *.dlq) และที่คั่นของทุก consumer group (__consumer_offsets)
+    #     เก็บเป็นไฟล์ใน /var/lib/kafka/data ถ้าไม่มี volume จะหายทุกครั้งที่ container ถูกสร้างใหม่
+    #     (docker compose down, เปลี่ยน config/image แล้ว up) → message ใน DLQ ที่ยังไม่ได้ replay หายไปด้วย
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     healthcheck:
       test: [ "CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092" ]
       interval: 10s
@@ -109,6 +124,8 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - JWT_SECRET=${JWT_SECRET}
       - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY}
+    healthcheck: *go-healthcheck
+    restart: unless-stopped
 
   product-service-app:
     build:
@@ -130,6 +147,9 @@ services:
       - DB_USER_PRODUCT=${APP_DB_USER}
       - DB_PASSWORD_PRODUCT=${APP_DB_PASSWORD}
       - KAFKA_BROKERS=kafka:9092
+    healthcheck: *go-healthcheck
+    restart: unless-stopped
+
   order-service-app:
     build:
       context: .
@@ -153,6 +173,8 @@ services:
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       - CATALOG_SERVICE_URL=http://catalog-service-app:3005
+    healthcheck: *go-healthcheck
+    restart: unless-stopped
 
   cart-service-app:
     build:
@@ -171,6 +193,8 @@ services:
       - DB_NAME_CART=cart_db
       - DB_USER_CART=${APP_DB_USER}
       - DB_PASSWORD_CART=${APP_DB_PASSWORD}
+    healthcheck: *go-healthcheck
+    restart: unless-stopped
   bff-service-app:
     build:
       context: .
@@ -191,14 +215,26 @@ services:
       - AI_SERVICE_URL=ai-service-app:50051
       - ALLOWED_ORIGINS=http://localhost:3000
       - JWT_SECRET=${JWT_SECRET}
+    # WHY service_healthy? BFF เปิดรับ traffic ก็ต่อเมื่อ service ปลายทางต่อ DB ได้แล้วจริง
+    #     ไม่ใช่แค่ container start → ลด 502 ช่วง stack เพิ่งขึ้น
+    # ai-service ใช้แค่ service_started: โหลดโมเดลนานหลายนาที และ BFF ทำงานต่อได้ถ้ายังไม่มี AI
     depends_on:
-      - auth-service-app
-      - product-service-app
-      - order-service-app
-      - cart-service-app
-      - catalog-service-app
-      - order-history-service-app
-      - ai-service-app
+      auth-service-app:
+        condition: service_healthy
+      product-service-app:
+        condition: service_healthy
+      order-service-app:
+        condition: service_healthy
+      cart-service-app:
+        condition: service_healthy
+      catalog-service-app:
+        condition: service_healthy
+      order-history-service-app:
+        condition: service_healthy
+      ai-service-app:
+        condition: service_started
+    healthcheck: *go-healthcheck
+    restart: unless-stopped
 
   # frontend-app:
   #   build:
@@ -236,6 +272,7 @@ services:
       - MONGO_URI_CATALOG=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-password}@catalog-mongo:27017/catalog_db?authSource=admin
       - MONGO_DB_CATALOG=catalog_db
       - KAFKA_BROKERS=kafka:9092
+    healthcheck: *go-healthcheck
 
   order-history-service-app:
     build:
@@ -255,6 +292,7 @@ services:
       - MONGO_URI_ORDER_HISTORY=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-password}@catalog-mongo:27017/order_history_db?authSource=admin
       - MONGO_DB_ORDER_HISTORY=order_history_db
       - KAFKA_BROKERS=kafka:9092
+    healthcheck: *go-healthcheck
 
   qdrant:
     image: qdrant/qdrant:v1.12.5
@@ -306,9 +344,18 @@ services:
     # ไม่ลาก container อื่นใน stack ล้มตามไปด้วย (เคยเกิดตอนโหลดโมเดลซ้อนสองตัว)
     mem_limit: 6g
     restart: unless-stopped
+    # python:3.12-slim ไม่มี curl/wget → ใช้ urllib ของ python เอง
+    # start_period ยาวเพราะครั้งแรกต้องดาวน์โหลด + โหลด BGE-M3 ก่อน HTTP จะขึ้น
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 300s
 
 volumes:
   postgres_data:
+  kafka_data:
   mongo_data:
   qdrant_data:
   huggingface_cache:

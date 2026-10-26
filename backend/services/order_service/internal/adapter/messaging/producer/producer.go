@@ -8,6 +8,7 @@ package producer
 import (
 	"fmt"
 	"logs"
+	"messaging"
 
 	"github.com/IBM/sarama"
 )
@@ -28,6 +29,7 @@ type saramaProducer struct {
 
 func NewSaramaProducer(brokers []string) (EventProducer, error) {
 	config := sarama.NewConfig()
+	config.Version = messaging.KafkaVersion
 	config.Producer.Return.Successes = true
 	// WHY WaitForAll แทน WaitForLocal?
 	//   - WaitForLocal เร็วกว่า แต่ถ้า leader crash หลัง ack → event หายได้

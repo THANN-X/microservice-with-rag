@@ -5,6 +5,7 @@ import (
 	repository "auth_service/internal/adapter/repository/postgres"
 	"authmiddleware"
 	"fmt"
+	"health"
 	"jwtutils"
 	"logs"
 	"os"
@@ -82,8 +83,18 @@ func main() {
 	// Why:  BFF ทำ JWT validation แล้ว — service แค่อ่าน X-User-ID/X-Role จาก headers
 	internalAuth := authmiddleware.InternalAuthMiddleware()
 
+	sqlDB, err := db.DB()
+	if err != nil {
+		panic("failed to get sql.DB from gorm: " + err.Error())
+	}
+	defer sqlDB.Close() //nolint:errcheck
+
 	// What: สร้าง Fiber app instance
 	app := fiber.New()
+
+	// What: /healthz + /readyz สำหรับ docker healthcheck — ต้องมาก่อน route ที่มี guard
+	checker := health.New("auth").Add("postgres", health.SQL(sqlDB))
+	checker.Register(app)
 
 	// --- Public Routes (ไม่ต้อง login) ---
 
@@ -124,7 +135,9 @@ func main() {
 
 	logs.Info("Auth service started at port 3001")
 
-	// What: เริ่ม listen HTTP server ที่ port 3001
-	// TODO: รองรับ graceful shutdown (trap SIGINT/SIGTERM แล้ว app.ShutdownWithTimeout)
-	app.Listen(":3001")
+	// What: เริ่ม listen HTTP server ที่ port 3001 แล้วรอ SIGINT/SIGTERM เพื่อปิดแบบ graceful
+	// Why:  docker stop / deploy ใหม่ จะไม่ตัด request login ที่กำลังทำงานอยู่กลางทาง
+	if err := checker.Serve(app, ":3001"); err != nil {
+		panic("failed to run server: " + err.Error())
+	}
 }

@@ -19,17 +19,16 @@ import (
 	"events"
 	"fmt"
 	"logs"
+	"messaging"
 	service "product_service/internal/core/port/service"
 	dto "product_service/internal/core/port/service/dto"
 
 	"github.com/IBM/sarama"
 )
 
-// WHAT: MessageHandler interface กำหนด contract ของ Kafka message handler
-// WHY: ทำให้ consumer.go ไม่ผูกกับ implementation ตรงๆ → unit test ได้ง่ายขึ้น
-type MessageHandler interface {
-	Handle(ctx context.Context, msg *sarama.ConsumerMessage) error
-}
+// compile-time check: ถ้า Handle มี signature ไม่ตรงกับ messaging.Handler จะ compile ไม่ผ่านที่ไฟล์นี้เลย
+// WHY ไม่ประกาศ interface ของตัวเอง? interface เป็นของฝั่งที่ใช้ (pkg/messaging) ฝั่งนี้แค่ทำตาม
+var _ messaging.Handler = (*productMessageHandler)(nil)
 
 type productMessageHandler struct {
 	cmdService service.ProductCommandService
@@ -37,7 +36,7 @@ type productMessageHandler struct {
 
 // WHAT: NewProductMessageHandler สร้าง handler พร้อม inject ProductCommandService
 // WHY: Dependency Injection ผ่าน constructor ทำให้ swap service impl ได้ตอน test
-func NewProductMessageHandler(cmdService service.ProductCommandService) MessageHandler {
+func NewProductMessageHandler(cmdService service.ProductCommandService) *productMessageHandler {
 	return &productMessageHandler{
 		cmdService: cmdService,
 	}
@@ -74,17 +73,15 @@ func (h *productMessageHandler) Handle(ctx context.Context, msg *sarama.Consumer
 
 		// Unmarshal เฉพาะส่วนที่ตรงกับ struct EventTypeHeader (Go จะข้าม field อื่นๆ ให้อัตโนมัติ)
 		if err := json.Unmarshal(msg.Value, &header); err != nil {
-			// ถ้าแกะไม่ออก แสดงว่าเป็น JSON ขยะ หรือ format ผิด
-			logs.Error("Failed to extract event type from body: " + err.Error())
-			return nil // ข้าม message นี้ไปเลย
+			// ถ้าแกะไม่ออก แสดงว่าเป็น JSON ขยะ หรือ format ผิด → retry ไปก็พังเหมือนเดิม ส่งเข้า DLQ ทันที
+			return messaging.Permanent(fmt.Errorf("extract event type from body: %w", err))
 		}
 
 		eventType = header.EventType
 	}
 
 	if eventType == "" {
-		logs.Warn("Event type not found in message")
-		return nil
+		return messaging.Permanent(fmt.Errorf("event type not found in header or body"))
 	}
 
 	logs.Info(fmt.Sprintf("Received event: %s topic: %s", eventType, msg.Topic))
@@ -116,7 +113,7 @@ func (h *productMessageHandler) Handle(ctx context.Context, msg *sarama.Consumer
 func (h *productMessageHandler) handleOrderCreated(ctx context.Context, msg *sarama.ConsumerMessage) error {
 	var evt events.OrderCreatedEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
-		return fmt.Errorf("unmarshal ORDER_CREATED: %w", err)
+		return messaging.Permanent(fmt.Errorf("unmarshal ORDER_CREATED: %w", err))
 	}
 
 	// WHY อ่าน EventID จาก Header แทน msg.Key?
@@ -160,7 +157,7 @@ func (h *productMessageHandler) handleOrderCreated(ctx context.Context, msg *sar
 func (h *productMessageHandler) handleOrderCancelled(ctx context.Context, msg *sarama.ConsumerMessage) error {
 	var evt events.OrderCancelledEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
-		return fmt.Errorf("unmarshal ORDER_CANCELLED: %w", err)
+		return messaging.Permanent(fmt.Errorf("unmarshal ORDER_CANCELLED: %w", err))
 	}
 
 	// WHY อ่าน EventID จาก Header แทน msg.Key?

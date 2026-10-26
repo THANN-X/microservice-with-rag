@@ -7,12 +7,17 @@ import (
 	"events"
 	"fmt"
 	"logs"
+	"messaging"
 
 	"github.com/IBM/sarama"
 )
 
 // productEventHandler รับ Kafka messages จาก "product.events" topic
 // และ route ไปยัง CatalogCommandService ตาม event type
+// compile-time check: ถ้า Handle มี signature ไม่ตรงกับ messaging.Handler จะ compile ไม่ผ่านที่ไฟล์นี้เลย
+// WHY ไม่ประกาศ interface ของตัวเอง? interface เป็นของฝั่งที่ใช้ (pkg/messaging) ฝั่งนี้แค่ทำตาม
+var _ messaging.Handler = (*productEventHandler)(nil)
+
 type productEventHandler struct {
 	cmdService serviceport.CatalogCommandService
 }
@@ -32,16 +37,14 @@ func (h *productEventHandler) Handle(ctx context.Context, msg *sarama.ConsumerMe
 
 		var header events.EventTypeHeader
 		if err := json.Unmarshal(msg.Value, &header); err != nil {
-			logs.Error(fmt.Sprintf("catalog: failed to extract event type from body: %v payload=%s", err, string(msg.Value)))
-			return nil // malformed payload → ไม่ retry
+			// malformed payload → retry ไปก็พังเหมือนเดิม ส่งเข้า DLQ ทันทีเพื่อเก็บไว้ตรวจสอบ
+			return messaging.Permanent(fmt.Errorf("catalog: extract event type from body: %w", err))
 		}
 		eventType = header.EventType
 	}
 
 	if eventType == "" {
-		logs.Warn(fmt.Sprintf("catalog: event type not found, skipping. topic=%s partition=%d offset=%d",
-			msg.Topic, msg.Partition, msg.Offset))
-		return nil
+		return messaging.Permanent(fmt.Errorf("catalog: event type not found in header or body"))
 	}
 
 	logs.Info(fmt.Sprintf("catalog: received event=%s topic=%s partition=%d offset=%d",
@@ -71,84 +74,84 @@ func (h *productEventHandler) Handle(ctx context.Context, msg *sarama.ConsumerMe
 	case "PRODUCT_CREATED":
 		var evt events.ProductCreatedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_CREATED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_CREATED: %w", err))
 		}
 		return h.cmdService.HandleProductCreated(ctx, messageID, &evt)
 
 	case "PRODUCT_INFO_UPDATED":
 		var evt events.ProductInfoUpdatedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_INFO_UPDATED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_INFO_UPDATED: %w", err))
 		}
 		return h.cmdService.HandleProductInfoUpdated(ctx, messageID, &evt)
 
 	case "PRODUCT_PRICE_CHANGED":
 		var evt events.ProductPriceChangedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_PRICE_CHANGED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_PRICE_CHANGED: %w", err))
 		}
 		return h.cmdService.HandleProductPriceChanged(ctx, messageID, &evt)
 
 	case "PRODUCT_VARIANT_ADDED":
 		var evt events.ProductVariantAddedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_VARIANT_ADDED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_VARIANT_ADDED: %w", err))
 		}
 		return h.cmdService.HandleProductVariantAdded(ctx, messageID, &evt)
 
 	case "PRODUCT_DELETED":
 		var evt events.ProductDeletedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_DELETED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_DELETED: %w", err))
 		}
 		return h.cmdService.HandleProductDeleted(ctx, messageID, &evt)
 
 	case "STOCK_ADJUSTED":
 		var evt events.StockAdjustedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal STOCK_ADJUSTED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal STOCK_ADJUSTED: %w", err))
 		}
 		return h.cmdService.HandleStockAdjusted(ctx, messageID, &evt)
 
 	case "PRODUCT_IMAGES_UPDATED":
 		var evt events.ProductImagesUpdatedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_IMAGES_UPDATED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_IMAGES_UPDATED: %w", err))
 		}
 		return h.cmdService.HandleProductImagesUpdated(ctx, messageID, &evt)
 
 	case "PRODUCT_VARIANT_IMAGES_UPDATED":
 		var evt events.ProductVariantImagesUpdatedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_VARIANT_IMAGES_UPDATED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_VARIANT_IMAGES_UPDATED: %w", err))
 		}
 		return h.cmdService.HandleProductVariantImagesUpdated(ctx, messageID, &evt)
 
 	case "PRODUCT_CATEGORIES_UPDATED":
 		var evt events.ProductCategoriesUpdatedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_CATEGORIES_UPDATED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_CATEGORIES_UPDATED: %w", err))
 		}
 		return h.cmdService.HandleProductCategoriesUpdated(ctx, messageID, &evt)
 
 	case "PRODUCT_ACTIVE_CHANGED":
 		var evt events.ProductActiveChangedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_ACTIVE_CHANGED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_ACTIVE_CHANGED: %w", err))
 		}
 		return h.cmdService.HandleProductActiveChanged(ctx, messageID, &evt)
 
 	case "PRODUCT_VARIANT_ACTIVE_CHANGED":
 		var evt events.ProductVariantActiveChangedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal PRODUCT_VARIANT_ACTIVE_CHANGED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal PRODUCT_VARIANT_ACTIVE_CHANGED: %w", err))
 		}
 		return h.cmdService.HandleProductVariantActiveChanged(ctx, messageID, &evt)
 
 	case "STOCK_UPDATED":
 		var evt events.StockUpdatedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			return fmt.Errorf("unmarshal STOCK_UPDATED: %w", err)
+			return messaging.Permanent(fmt.Errorf("unmarshal STOCK_UPDATED: %w", err))
 		}
 		return h.cmdService.HandleStockUpdated(ctx, messageID, &evt)
 

@@ -19,25 +19,22 @@ import (
 	"events"
 	"fmt"
 	"logs"
+	"messaging"
 	service "order_service/internal/core/port/service"
 	dto "order_service/internal/core/port/service/dto"
 
 	"github.com/IBM/sarama"
 )
 
-// MessageHandler interface สำหรับ consumer.go ใช้ inject handler
-// WHY interface?
-//   - ConsumerGroupHandler ไม่ผูกกับ concrete message handler
-//   - ง่ายต่อการ mock ใน integration test
-type MessageHandler interface {
-	Handle(ctx context.Context, msg *sarama.ConsumerMessage) error
-}
+// compile-time check: ถ้า Handle มี signature ไม่ตรงกับ messaging.Handler จะ compile ไม่ผ่านที่ไฟล์นี้เลย
+// WHY ไม่ประกาศ interface ของตัวเอง? interface เป็นของฝั่งที่ใช้ (pkg/messaging) ฝั่งนี้แค่ทำตาม
+var _ messaging.Handler = (*orderMessageHandler)(nil)
 
 type orderMessageHandler struct {
 	cmdService service.OrderCommandService
 }
 
-func NewOrderMessageHandler(cmdService service.OrderCommandService) MessageHandler {
+func NewOrderMessageHandler(cmdService service.OrderCommandService) *orderMessageHandler {
 	return &orderMessageHandler{cmdService: cmdService}
 }
 
@@ -65,15 +62,14 @@ func (h *orderMessageHandler) Handle(ctx context.Context, msg *sarama.ConsumerMe
 
 		var header events.EventTypeHeader
 		if err := json.Unmarshal(msg.Value, &header); err != nil {
-			logs.Error("Failed to extract event type from body: " + err.Error())
-			return nil // ข้าม message นี้ (malformed payload → ไม่ควร retry)
+			// malformed payload → retry ไปก็พังเหมือนเดิม ส่งเข้า DLQ ทันทีเพื่อเก็บไว้ตรวจสอบ
+			return messaging.Permanent(fmt.Errorf("extract event type from body: %w", err))
 		}
 		eventType = header.EventType
 	}
 
 	if eventType == "" {
-		logs.Warn(fmt.Sprintf("Event type not found, skipping. topic=%s offset=%d", msg.Topic, msg.Offset))
-		return nil
+		return messaging.Permanent(fmt.Errorf("event type not found in header or body"))
 	}
 
 	logs.Info(fmt.Sprintf("Received event: %s topic: %s offset: %d", eventType, msg.Topic, msg.Offset))
@@ -101,8 +97,8 @@ func (h *orderMessageHandler) Handle(ctx context.Context, msg *sarama.ConsumerMe
 func (h *orderMessageHandler) handleStockReserved(ctx context.Context, msg *sarama.ConsumerMessage) error {
 	var evt events.StockReservedEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
-		return fmt.Errorf("unmarshal StockReservedEvent (topic=%s partition=%d offset=%d): %w",
-			msg.Topic, msg.Partition, msg.Offset, err)
+		return messaging.Permanent(fmt.Errorf("unmarshal StockReservedEvent (topic=%s partition=%d offset=%d): %w",
+			msg.Topic, msg.Partition, msg.Offset, err))
 	}
 
 	// WHY อ่าน EventID จาก Header แทน msg.Key?

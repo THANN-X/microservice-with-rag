@@ -3,6 +3,7 @@ package producer
 import (
 	"fmt"
 	"logs"
+	"messaging"
 
 	"github.com/IBM/sarama"
 )
@@ -26,6 +27,7 @@ type saramaProducer struct {
 
 func NewSaramaProducer(brokers []string) (EventProducer, error) {
 	config := sarama.NewConfig()
+	config.Version = messaging.KafkaVersion
 	// Producer.Return.Successes = true คือต้องการ เพราะใช้ SyncProducer
 	config.Producer.Return.Successes = true
 	// WaitForAll: รอให้ Kafka leader + followers ตอบกลับ (strongest durability guarantee)

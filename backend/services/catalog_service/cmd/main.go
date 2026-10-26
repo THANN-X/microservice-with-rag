@@ -2,21 +2,20 @@ package main
 
 import (
 	cataloghttp "catalog_service/internal/adapter/handler/http"
-	"catalog_service/internal/adapter/messaging/consumer"
 	msghandler "catalog_service/internal/adapter/messaging/handler"
 	mongorepo "catalog_service/internal/adapter/repository/mongo"
 	"catalog_service/internal/config"
 	"catalog_service/internal/core/service/command"
 	"catalog_service/internal/core/service/query"
 	"context"
+	"health"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/IBM/sarama"
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
 	"logs"
+	"messaging"
 )
 
 const (
@@ -55,6 +54,8 @@ func main() {
 	}
 
 	kafkaCfg := sarama.NewConfig()
+	kafkaCfg.Version = messaging.KafkaVersion
+	kafkaCfg.Consumer.Return.Errors = true // อ่านโดย messaging.LogConsumerErrors ข้างล่าง
 	kafkaCfg.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{
 		sarama.NewBalanceStrategyRoundRobin(),
 	}
@@ -66,27 +67,31 @@ func main() {
 		panic("failed to create kafka consumer group: " + err.Error())
 	}
 	defer consumerGrp.Close() //nolint:errcheck
+	go messaging.LogConsumerErrors("catalog", consumerGrp)
+
+	// DLQ: message ที่ retry ครบแล้วยังพัง → product.events.dlq แทนการทิ้ง
+	dlq, err := messaging.NewDeadLetterPublisher([]string{brokers})
+	if err != nil {
+		panic("failed to create kafka dead letter publisher: " + err.Error())
+	}
+	defer dlq.Close() //nolint:errcheck
 
 	eventHandler := msghandler.NewProductEventHandler(cmdService)
-	groupHandler := consumer.NewConsumerGroupHandler(eventHandler)
+	groupHandler := messaging.NewConsumerGroupHandler("catalog", eventHandler, dlq, messaging.DefaultRetryPolicy())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Kafka consume loop — restart on rebalance
-	go func() {
-		for {
-			if err := consumerGrp.Consume(ctx, []string{kafkaTopic}, groupHandler); err != nil {
-				logs.Error("catalog: kafka consume error: " + err.Error())
-			}
-			if ctx.Err() != nil {
-				return
-			}
-		}
-	}()
+	// Kafka consume loop — เข้ากลุ่มใหม่หลัง rebalance, backoff ตอน Kafka ล่ม, ออกเมื่อ shutdown
+	go messaging.RunConsumerGroup(ctx, "catalog", consumerGrp, []string{kafkaTopic}, groupHandler)
 
 	// --- HTTP server ---
 	app := fiber.New()
+
+	checker := health.New("catalog").Add("mongo", func(ctx context.Context) error {
+		return mongoClient.Ping(ctx, nil)
+	})
+	checker.Register(app)
 
 	handler := cataloghttp.NewCatalogHandler(queryService)
 
@@ -101,21 +106,12 @@ func main() {
 		port = defaultPort
 	}
 
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	logs.Info("Catalog Service starting on port " + port)
+	err = checker.Serve(app, ":"+port)
 
-	go func() {
-		logs.Info("Catalog Service starting on port " + port)
-		if err := app.Listen(":" + port); err != nil {
-			logs.Error(err)
-		}
-	}()
-
-	<-quit
-	logs.Info("Catalog Service shutting down...")
+	// HTTP ปิดแล้ว → หยุด Kafka consumer ต่อ แล้ว defer ปิด consumer group / DLQ / Mongo
 	cancel()
-	if err := app.Shutdown(); err != nil {
-		logs.Error(err)
+	if err != nil {
+		panic(err.Error()) // panic ยังรัน defer ก่อน exit ต่างจาก os.Exit
 	}
 }
