@@ -1,7 +1,7 @@
 // WHAT: OutboxProcessor เป็น background worker ที่คอย poll outbox table แล้วส่งไป Kafka
 //
 // HOW: poll ทุก 500ms → ดึง PENDING batch (20 records) → ส่ง Kafka → mark SENT
-//      Kafka ล่ม → หยุด batch + พักแบบ backoff (ไม่นับ retry)
+//      Kafka ล่ม → หยุด batch + พักแบบ backoff (ไม่นับ retry) / อ่าน outbox จาก DB ไม่ได้ → พักแบบเดียวกัน
 //      message พังเอง → increment retry_count → dead letter หลัง maxRetries
 //
 // WHY ใช้ polling แทน CDC (Change Data Capture เช่น Debezium)?
@@ -30,14 +30,14 @@ type OutboxProcessor struct {
 	producer   producer.EventProducer
 	maxRetries int
 
-	// pause ตอน Kafka ใช้ไม่ได้: ข้ามรอบ poll ไปจนถึง pausedUntil แล้วค่อยลองใหม่ (1s → 2s → ... → 30s)
+	// pause ตอน Kafka หรือ DB ใช้ไม่ได้: ข้ามรอบ poll ไปจนถึง pausedUntil แล้วค่อยลองใหม่ (1s → 2s → ... → 30s)
 	backoff     time.Duration
 	pausedUntil time.Time
 }
 
 const (
-	brokerBackoffInitial = 1 * time.Second
-	brokerBackoffMax     = 30 * time.Second
+	pauseBackoffInitial = 1 * time.Second
+	pauseBackoffMax     = 30 * time.Second
 )
 
 func NewOutboxProcessor(repo repo.OutboxRepository, producer producer.EventProducer) *OutboxProcessor {
@@ -67,27 +67,28 @@ func (p *OutboxProcessor) Start(ctx context.Context) {
 			return
 		case now := <-ticker.C:
 			if now.Before(p.pausedUntil) {
-				continue // Kafka เพิ่งล่ม → ยังไม่ถึงเวลาลองใหม่
+				continue // Kafka/DB เพิ่งล่ม → ยังไม่ถึงเวลาลองใหม่
 			}
 			p.afterBatch(now, p.processBatch(ctx))
 		}
 	}
 }
 
-// afterBatch ตั้ง pause ถ้ารอบนี้เจอ Kafka ใช้ไม่ได้ และรีเซ็ตเมื่อกลับมาปกติ
-// WHY ต้อง pause? ไม่งั้นทุก 500ms จะลองส่งใหม่ + log error ในขณะที่ Kafka ยังล่มอยู่
-func (p *OutboxProcessor) afterBatch(now time.Time, brokerDown bool) {
-	if !brokerDown {
+// afterBatch ตั้ง pause ถ้ารอบนี้เจอ Kafka หรือ DB ใช้ไม่ได้ และรีเซ็ตเมื่อกลับมาปกติ
+// WHY ต้อง pause? ไม่งั้นทุก 500ms จะลองใหม่ + log error ในขณะที่ Kafka/DB ยังล่มอยู่
+// (สาเหตุจริงถูก log ไว้แล้วใน processBatch ตรงนี้บอกแค่ว่าพักนานเท่าไร)
+func (p *OutboxProcessor) afterBatch(now time.Time, pause bool) {
+	if !pause {
 		p.backoff = 0
 		return
 	}
-	p.backoff = min(max(p.backoff*2, brokerBackoffInitial), brokerBackoffMax)
+	p.backoff = min(max(p.backoff*2, pauseBackoffInitial), pauseBackoffMax)
 	p.pausedUntil = now.Add(p.backoff)
-	logs.Warn(fmt.Sprintf("order outbox: kafka unavailable, pausing for %s", p.backoff))
+	logs.Warn(fmt.Sprintf("order outbox: pausing for %s", p.backoff))
 }
 
 // processBatch ส่ง PENDING events ทีละตัวตามลำดับ created_at
-// คืน true ถ้าเจอ error ระดับ Kafka (ส่งอะไรก็ไม่ผ่าน) เพื่อให้ Start พักก่อนลองใหม่
+// คืน true ถ้าควรพักก่อนรอบหน้า: อ่าน outbox จาก DB ไม่ได้ หรือเจอ error ระดับ Kafka (ส่งอะไรก็ไม่ผ่าน)
 //
 // กติกาที่รักษาลำดับต่อ aggregate (order เดียวกัน):
 //   - Kafka ใช้ไม่ได้ → หยุดทั้ง batch ทันที ไม่นับ retry, รอบหน้าเริ่มจาก event แรกเดิม
@@ -97,11 +98,12 @@ func (p *OutboxProcessor) afterBatch(now time.Time, brokerDown bool) {
 // WHY ห้ามข้ามไปส่ง event ถัดไปของ aggregate เดียวกัน?
 //   - ถ้า ORDER_CREATED ส่งไม่ผ่านแต่ ORDER_PAID ผ่าน consumer จะได้ PAID ก่อน CREATED
 //     → order-history หา order ไม่เจอ → PAID ไปค้างใน DLQ → หน้าเว็บแสดง PENDING ทั้งที่จ่ายแล้ว
-func (p *OutboxProcessor) processBatch(ctx context.Context) (brokerDown bool) {
+func (p *OutboxProcessor) processBatch(ctx context.Context) (pause bool) {
 	messages, err := p.repo.GetUnsentMessages(ctx, 20)
 	if err != nil {
 		logs.Error("Failed to fetch outbox messages: " + err.Error())
-		return false
+		// DB ล่ม → รอบหน้า 500ms ก็พังเหมือนเดิม พักแบบ backoff เหมือนตอน Kafka ล่ม (กัน log ท่วม)
+		return true
 	}
 
 	// WHY Sequential แทน Concurrent?

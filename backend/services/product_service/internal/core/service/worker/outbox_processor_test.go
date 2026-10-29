@@ -15,11 +15,12 @@ type fakeOutboxRepo struct {
 	sent        []string
 	incremented []string
 	failed      []string
+	fetchErr    error
 }
 
 func (f *fakeOutboxRepo) Save(context.Context, *domain.OutboxEvent) error { return nil }
 func (f *fakeOutboxRepo) GetUnsentMessages(context.Context, int) ([]*domain.OutboxEvent, error) {
-	return f.pending, nil
+	return f.pending, f.fetchErr
 }
 func (f *fakeOutboxRepo) MarkAsSent(_ context.Context, id string) error {
 	f.sent = append(f.sent, id)
@@ -79,7 +80,7 @@ func TestProcessBatch_BrokerDownStopsBatchWithoutCountingRetry(t *testing.T) {
 	brokerDown := p.processBatch(context.Background())
 
 	if !brokerDown {
-		t.Error("processBatch() = false, want true so Start pauses")
+		t.Error("processBatch() = false, want true so Start pauses while Kafka is down")
 	}
 	if len(prod.published) != 0 {
 		t.Errorf("published %v, want nothing after a broker-level error (PAID must not overtake CREATED)", prod.published)
@@ -137,6 +138,21 @@ func TestProcessBatch_AllSentInOrder(t *testing.T) {
 	}
 	if want := []string{"123-created", "123-paid"}; !equal(prod.published, want) || !equal(repo.sent, want) {
 		t.Errorf("published=%v sent=%v, want both %v", prod.published, repo.sent, want)
+	}
+}
+
+// DB ล่ม → อ่าน outbox ไม่ได้ ต้องพักแบบ backoff เหมือน Kafka ล่ม
+// ไม่งั้นจะ query ซ้ำ + log error ทุก 500ms ตลอดเวลาที่ DB ล่ม
+func TestProcessBatch_FetchErrorPauses(t *testing.T) {
+	repo := &fakeOutboxRepo{fetchErr: errors.New("dial tcp: connection refused")}
+	prod := &fakeProducer{}
+	p := NewOutboxProcessor(repo, prod)
+
+	if !p.processBatch(context.Background()) {
+		t.Error("processBatch() = false, want true so Start pauses while the database is down")
+	}
+	if len(prod.published) != 0 {
+		t.Errorf("published %v, want nothing when the outbox could not be read", prod.published)
 	}
 }
 
