@@ -142,17 +142,20 @@ function CheckoutForm() {
   };
 
   // รอ order ออกจาก PENDING (Kafka Saga: product_service reserve stock)
-  // poll ทุก 500ms สูงสุด 10 วินาที (20 ครั้ง) — Saga ปกติใช้เวลา <1 วินาที
-  // Returns: status ล่าสุดที่ไม่ใช่ PENDING
+  // poll ทุก 500ms สูงสุด 30 วินาที — Saga ปกติใช้เวลา <1 วินาที
+  // WHY 30 วินาที ไม่ใช่ 10?
+  //   - consumer ฝั่ง product retry ได้นานถึง ~23s ตอน DB สะดุด (4 ครั้ง × timeout 5s + backoff)
+  //   - รอสั้นกว่านั้น = ลูกค้าเห็น error ทั้งที่ order กำลังจะสำเร็จ
+  // Returns: status ล่าสุด — ยังเป็น "PENDING" ได้ถ้าครบเวลาแล้วยังไม่ได้ผลจอง stock
   const waitForConfirmed = async (orderId: string): Promise<import("@/lib/types").OrderStatus> => {
-    const MAX_ATTEMPTS = 20;
+    const MAX_WAIT_MS = 30_000;
     const INTERVAL_MS = 500;
-    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    const deadline = Date.now() + MAX_WAIT_MS;
+    for (;;) {
       const order = await orderService.get(orderId);
-      if (order.status !== "PENDING") return order.status;
+      if (order.status !== "PENDING" || Date.now() >= deadline) return order.status;
       await new Promise((r) => setTimeout(r, INTERVAL_MS));
     }
-    throw new Error("ระบบใช้เวลานานเกินปกติ กรุณาลองใหม่");
   };
 
   const handleSubmit = async () => {
@@ -182,11 +185,16 @@ function CheckoutForm() {
       // Saga ใช้เวลา ~200-800ms (Kafka round trip + product_service)
       const orderStatus = await waitForConfirmed(orderId);
 
+      // WHY ไม่บอกว่า "หมดสต็อก"? — CANCELLED ตรงนี้มาได้หลายทาง (ของไม่พอ / หมดเวลารอยืนยันสต็อก /
+      //   ลูกค้ายกเลิกจากอีกแท็บ) checkout ไม่รู้เหตุผลจริง เพราะ order service ไม่ได้ส่ง cancel_reason มา
       if (orderStatus === "CANCELLED") {
         setPendingOrderId(null);
-        throw new Error("สินค้าในคำสั่งซื้อหมดสต็อก กรุณาลองใหม่");
+        throw new Error("คำสั่งซื้อถูกยกเลิก กรุณาสั่งซื้อใหม่อีกครั้ง");
       }
       // PAID/AWAITING_PAYMENT/COMPLETED → order ถูกชำระไปแล้ว (retry กับ order เก่า)
+      // PENDING → ครบ 30 วินาทีแล้วยังไม่ได้ผลจอง stock → ไปหน้า order แทนการให้กดลองใหม่
+      //   (ลองใหม่ก็ใช้ order เดิม รอซ้ำเปล่าๆ · หน้า order ชำระเงินได้เมื่อยืนยันแล้ว หรือยกเลิกเองได้
+      //    ถ้าไม่มีผลเลย ReservationTimeoutChecker ยกเลิกให้เองหลัง 15 นาที)
       if (orderStatus !== "CONFIRMED") {
         setPendingOrderId(null);
         router.push(`/orders/${orderId}`);

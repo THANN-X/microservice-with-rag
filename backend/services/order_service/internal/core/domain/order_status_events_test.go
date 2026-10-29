@@ -94,6 +94,58 @@ func TestMarkReservationFailed_RejectsNonPending(t *testing.T) {
 	}
 }
 
+func TestExpireReservation_RaisesReservationFailedEvent(t *testing.T) {
+	order := newTestOrder(t)
+
+	if err := order.ExpireReservation(); err != nil {
+		t.Fatalf("ExpireReservation: %v", err)
+	}
+
+	if order.Status != OrderStatusCancelled {
+		t.Errorf("status = %q, want %q", order.Status, OrderStatusCancelled)
+	}
+
+	evts := order.PopDomainEvents()
+	if len(evts) != 1 {
+		t.Fatalf("จำนวน event = %d, want 1", len(evts))
+	}
+
+	evt, ok := evts[0].(*events.OrderReservationFailedEvent)
+	if !ok {
+		// ห้ามเป็น OrderCancelledEvent — stock ยังไม่เคยถูกยืนยันว่าจอง ถ้าคืนตอนนี้ของจะงอก
+		t.Fatalf("event type = %T, want *events.OrderReservationFailedEvent", evts[0])
+	}
+	if evt.OrderID != order.ID {
+		t.Errorf("OrderID = %q, want %q", evt.OrderID, order.ID)
+	}
+
+	// reason ต้องไม่ใช่ "สินค้าไม่เพียงพอ" — ลูกค้าจะเข้าใจผิดว่าของหมด ทั้งที่จริงระบบค้าง
+	stockOut := newTestOrder(t)
+	_ = stockOut.MarkReservationFailed()
+	if want := stockOut.PopDomainEvents()[0].(*events.OrderReservationFailedEvent).Reason; evt.Reason == "" || evt.Reason == want {
+		t.Errorf("Reason = %q, want a non-empty reason different from %q", evt.Reason, want)
+	}
+}
+
+func TestExpireReservation_RejectsNonPending(t *testing.T) {
+	order := newTestOrder(t)
+	if err := order.ConfirmOrder(); err != nil {
+		t.Fatalf("ConfirmOrder: %v", err)
+	}
+	order.PopDomainEvents()
+
+	// order ที่ CONFIRMED แล้วจองของไปจริง — ถ้า timeout ยกเลิกได้ stock จะค้างไม่มีใครคืน
+	if err := order.ExpireReservation(); err == nil {
+		t.Fatal("คาดว่าจะ error เมื่อเรียกจากสถานะ CONFIRMED แต่ผ่านไปได้")
+	}
+	if order.Status != OrderStatusConfirmed {
+		t.Errorf("status ถูกเปลี่ยนทั้งที่ transition ล้มเหลว: %q", order.Status)
+	}
+	if evts := order.PopDomainEvents(); len(evts) != 0 {
+		t.Errorf("transition ล้มเหลวแต่ยัง raise event %d ตัว", len(evts))
+	}
+}
+
 func TestMarkAwaitingPayment_RaisesAwaitingPaymentEvent(t *testing.T) {
 	order := newTestOrder(t)
 	if err := order.ConfirmOrder(); err != nil {
