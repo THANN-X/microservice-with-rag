@@ -40,8 +40,18 @@ func (r *outboxRepository) Save(ctx context.Context, event *domain.OutboxEvent) 
 //   - ป้องกัน memory spike ถ้ามี PENDING จำนวนมาก (e.g. Kafka down หลายชั่วโมง)
 func (r *outboxRepository) GetUnsentMessages(ctx context.Context, limit int) ([]*domain.OutboxEvent, error) {
 	var entityMessages []*entity.OutboxEventEntity
+	// WHY ข้าม aggregate ที่มี event FAILED?
+	//   - event ที่ FAILED ไม่ถูกส่งอีกแล้ว ถ้ายังส่ง event ถัดไปของ aggregate เดียวกัน consumer จะได้ไม่ครบ/ผิดลำดับ
+	//   - หยุด aggregate นั้นไว้ทั้งหมดจนกว่าจะมีคนแก้ event ที่ FAILED แล้วตั้งกลับเป็น PENDING
+	failedAggregates := r.GetDB(ctx).Model(&entity.OutboxEventEntity{}).
+		Select("aggregate_id").
+		Where("status = ?", domain.OutboxStatusFailed)
+
 	// ดึงข้อมูลเรียงตามเวลาเก่าสุดก่อน (FIFO)
-	err := r.GetDB(ctx).Where("status = ?", "PENDING").Order("created_at asc").Limit(limit).Find(&entityMessages).Error
+	err := r.GetDB(ctx).
+		Where("status = ?", "PENDING").
+		Where("aggregate_id NOT IN (?)", failedAggregates).
+		Order("created_at asc").Limit(limit).Find(&entityMessages).Error
 
 	if err != nil {
 		return nil, err

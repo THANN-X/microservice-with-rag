@@ -43,8 +43,17 @@ func (r *outboxRepository) Save(ctx context.Context, event *domain.OutboxEvent) 
 func (r *outboxRepository) GetUnsentMessages(ctx context.Context, limit int) ([]*domain.OutboxEvent, error) {
 	var entityMessages []*entity.OutboxEventEntity
 
+	// WHY ข้าม aggregate ที่มี event FAILED?
+	//   - event ที่ FAILED ไม่ถูกส่งอีกแล้ว ถ้ายังส่ง event ถัดไปของ order เดียวกัน consumer จะได้ไม่ครบ/ผิดลำดับ
+	//     (เช่นได้ ORDER_PAID ทั้งที่ไม่เคยได้ ORDER_CREATED)
+	//   - หยุด aggregate นั้นไว้ทั้งหมดจนกว่าจะมีคนแก้ event ที่ FAILED แล้วตั้งกลับเป็น PENDING
+	failedAggregates := r.GetDB(ctx).Model(&entity.OutboxEventEntity{}).
+		Select("aggregate_id").
+		Where("status = ?", domain.OutboxStatusFailed)
+
 	err := r.GetDB(ctx).
 		Where("status = ?", "PENDING").
+		Where("aggregate_id NOT IN (?)", failedAggregates).
 		Order("created_at ASC").
 		Limit(limit).
 		Find(&entityMessages).Error

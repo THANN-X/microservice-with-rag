@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"product_service/internal/adapter/repository/postgres/entity"
+	"product_service/internal/core/domain"
 
 	"github.com/joho/godotenv"
 	"gorm.io/gorm"
@@ -63,6 +64,17 @@ func OpenDatabase(dsn string) *gorm.DB {
 	}
 
 	fmt.Println("Database migration completed!")
+
+	// แปลง status ที่สะกดผิดแบบเก่า ("FAILD") ให้เป็น "FAILED" ตาม domain.OutboxStatusFailed
+	// WHY ต้องแปลง? outbox query ข้าม aggregate ที่มี event FAILED เพื่อรักษาลำดับ
+	//   ถ้า row เก่ายังเป็น "FAILD" query จะมองไม่เห็น แล้วส่ง event ถัดไปของ aggregate นั้นออกไปทั้งที่ไม่ควร
+	// idempotent: รันซ้ำทุกครั้งที่ start ได้ ถ้าไม่มี row เก่าก็ไม่แก้อะไร
+	// TODO: ย้ายไปเป็น migration file เมื่อเปลี่ยนจาก AutoMigrate ไปใช้ goose
+	if err := db.Model(&entity.OutboxEventEntity{}).
+		Where("status = ?", "FAILD").
+		Update("status", domain.OutboxStatusFailed).Error; err != nil {
+		panic("failed to normalize outbox status: " + err.Error())
+	}
 
 	return db
 
