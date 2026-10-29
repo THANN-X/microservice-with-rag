@@ -226,6 +226,29 @@ func (o *Order) ConfirmOrder() error {
 //   - MarkReservationFailed = system-driven (Saga step failed) → no compensation needed
 //   - Cancel = user/admin-driven → compensation needed ถ้า stock เคยถูก reserve
 func (o *Order) MarkReservationFailed() error {
+	// WHY reason เป็นภาษาไทย? — field นี้ถูกแสดงตรงๆ บนหน้า order ของลูกค้าและแอดมิน
+	// (order.cancel_reason) ช่องเดียวกับที่ลูกค้าพิมพ์เหตุผลตอนกดยกเลิกเอง
+	return o.failReservation("สินค้าไม่เพียงพอ")
+}
+
+// ExpireReservation transitions PENDING → CANCELLED เมื่อรอผลจอง stock นานเกินกำหนด
+// (เรียกโดย ReservationTimeoutChecker)
+//
+// WHY ต้องมี?
+//   - order ออกจาก PENDING ได้ทางเดียวคือ product_service ตอบผลจอง stock กลับมา
+//   - ถ้า ORDER_CREATED ไปจบที่ DLQ (หรือหายระหว่างทาง) จะไม่มีคำตอบ → order ค้าง "รอดำเนินการ" ถาวร
+//
+// WHY raise OrderReservationFailedEvent เหมือน MarkReservationFailed?
+//   - ณ ตอนนี้ order service ไม่เคยได้ยินว่าจอง stock สำเร็จ → ไม่มีอะไรต้องคืน
+//   - ถ้าภายหลัง product_service จองสำเร็จจริง (เช่น มีคน replay จาก DLQ)
+//     HandleStockResult จะเจอ "SUCCESS + CANCELLED" → RequestStockRelease() คืน stock ให้เอง
+func (o *Order) ExpireReservation() error {
+	return o.failReservation("หมดเวลารอยืนยันสต็อก กรุณาสั่งซื้อใหม่")
+}
+
+// failReservation คือ transition ร่วมของ PENDING → CANCELLED แบบไม่ต้อง compensate
+// ต่างกันแค่ reason ที่ลูกค้าเห็น
+func (o *Order) failReservation(reason string) error {
 	if o.Status != OrderStatusPending {
 		return ErrInvalidOrderTransition
 	}
@@ -233,12 +256,10 @@ func (o *Order) MarkReservationFailed() error {
 	o.Status = OrderStatusCancelled
 	o.UpdatedAt = time.Now()
 
-	// WHY reason เป็นภาษาไทย? — field นี้ถูกแสดงตรงๆ บนหน้า order ของลูกค้าและแอดมิน
-	// (order.cancel_reason) ช่องเดียวกับที่ลูกค้าพิมพ์เหตุผลตอนกดยกเลิกเอง
 	o.addEvent(&events.OrderReservationFailedEvent{
 		OrderID:    o.ID,
 		CustomerID: o.CustomerID,
-		Reason:     "สินค้าไม่เพียงพอ",
+		Reason:     reason,
 		OccurredAt: time.Now(),
 	})
 

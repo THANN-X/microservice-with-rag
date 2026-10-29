@@ -93,6 +93,12 @@ func main() {
 	paymentChecker := woker.NewPaymentTimeoutChecker(cmdRepo, paymentRepo, 30*time.Minute)
 	go paymentChecker.Start(ctx)
 
+	// ReservationTimeoutChecker: ยกเลิก orders ที่ค้าง PENDING (ไม่ได้ผลจอง stock) นานเกิน 15 นาที
+	// WHY 15 นาที? ต้องนานกว่าเส้นทางปกติที่ช้าที่สุดมาก ๆ จะได้ไม่ไปยกเลิก order ที่ยังกำลังจะสำเร็จ:
+	//   consumer retry ฝั่ง product ~23s + outbox backoff สูงสุด 30s + Kafka/DB ล่มชั่วคราวหลายนาที
+	reservationChecker := woker.NewReservationTimeoutChecker(cmdRepo, 15*time.Minute)
+	go reservationChecker.Start(ctx)
+
 	// ─── Kafka Consumer (stock.events) ────────────────────────────────────────
 	saramaConfig := sarama.NewConfig()
 	saramaConfig.Version = messaging.KafkaVersion

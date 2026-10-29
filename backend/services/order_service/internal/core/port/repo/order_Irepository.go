@@ -41,8 +41,19 @@ type OrderCommandRepository interface {
 	//   - ถ้า TX fail → ทั้ง order state และ outbox event หายไปพร้อมกัน (ไม่มี inconsistency)
 	SaveDomainEvents(ctx context.Context, order *domain.Order) error
 
+	// UpdateOrderStatusIf เปลี่ยน status เฉพาะเมื่อ status ปัจจุบันใน DB ยังเป็น from (compare-and-set)
+	// คืน false ถ้ามี process อื่นเปลี่ยน status ไปก่อนแล้ว
+	// WHY ไม่ใช้ UpdateOrderStatus?
+	//   - GetOrderByID ไม่ได้ lock row → ระหว่างโหลดกับเขียน HandleStockResult อาจ confirm order ไปแล้ว
+	//   - ถ้าเขียนทับ CONFIRMED เป็น CANCELLED → stock ที่จองไว้จริงจะค้าง ไม่มีใครคืน
+	UpdateOrderStatusIf(ctx context.Context, orderID string, from, to domain.OrderStatus) (bool, error)
+
 	// FindExpiredPaymentOrders ค้นหา orders ที่อยู่ใน AWAITING_PAYMENT นานเกินกำหนด
 	FindExpiredPaymentOrders(ctx context.Context, timeout time.Duration) ([]*domain.Order, error)
+
+	// FindStalePendingOrders ค้นหา orders ที่ค้าง PENDING (ยังไม่ได้ผลจอง stock) นานเกิน timeout
+	// คืนไม่เกิน limit รายการ เรียงจากเก่าสุดก่อน
+	FindStalePendingOrders(ctx context.Context, timeout time.Duration, limit int) ([]*domain.Order, error)
 }
 
 // OrderQueryRepository รับผิดชอบ read operations (ไม่ต้องการ TX หรือ event)

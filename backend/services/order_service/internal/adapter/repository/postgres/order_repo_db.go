@@ -98,6 +98,21 @@ func (r *orderRepository) UpdateOrderStatus(ctx context.Context, orderID string,
 	return nil
 }
 
+// UpdateOrderStatusIf ทำ compare-and-set: UPDATE orders SET status=? WHERE id=? AND status=?
+// WHY ปลอดภัยแม้ไม่มี SELECT ... FOR UPDATE?
+//   - Postgres lock row ตอน UPDATE แล้วประเมิน WHERE ใหม่หลัง TX อื่นที่ถือ lock commit
+//     → ถ้า TX อื่นเปลี่ยน status ไปแล้ว เงื่อนไข status=from จะไม่จริง → RowsAffected = 0
+func (r *orderRepository) UpdateOrderStatusIf(ctx context.Context, orderID string, from, to domain.OrderStatus) (bool, error) {
+	result := r.GetDB(ctx).Model(&entity.OrderEntity{}).
+		Where("id = ? AND status = ?", orderID, string(from)).
+		Update("status", string(to))
+
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
 // SaveDomainEvents บันทึก domain events จาก Order aggregate ลง outbox table
 // WHY จบภายใน Repository (ไม่ผ่าน OutboxRepository.Save)?
 //   - ต้องการ TX context เดียวกับ CreateOrder/UpdateOrderStatus
@@ -172,6 +187,34 @@ func (r *orderRepository) FindExpiredPaymentOrders(ctx context.Context, timeout 
 	err := r.GetDB(ctx).
 		Preload("Items").
 		Where("status = ? AND updated_at < ?", string(domain.OrderStatusAwaitingPayment), cutoff).
+		Find(&entities).Error
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]*domain.Order, len(entities))
+	for i, e := range entities {
+		orders[i] = e.ToOrderDomain()
+	}
+
+	return orders, nil
+}
+
+// FindStalePendingOrders ค้นหา orders ที่ค้าง PENDING นานเกิน timeout
+// WHY นับจาก created_at?
+//   - order อยู่ PENDING ตั้งแต่ถูกสร้าง และทุก transition ออกจาก PENDING เป็นทางเดียว
+//     → เวลาที่ค้างอยู่ = เวลาตั้งแต่สร้าง
+//
+// WHY มี limit?
+//   - ถ้า product_service ล่มนาน order ค้างสะสมได้เยอะ → เก็บทีละก้อน รอบหน้าค่อยเก็บต่อ
+func (r *orderRepository) FindStalePendingOrders(ctx context.Context, timeout time.Duration, limit int) ([]*domain.Order, error) {
+	var entities []entity.OrderEntity
+	cutoff := time.Now().Add(-timeout)
+
+	err := r.GetDB(ctx).
+		Where("status = ? AND created_at < ?", string(domain.OrderStatusPending), cutoff).
+		Order("created_at asc").
+		Limit(limit).
 		Find(&entities).Error
 	if err != nil {
 		return nil, err
